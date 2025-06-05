@@ -176,3 +176,10 @@ cython_debug/
 
 # PyPI configuration file
 .pypirc
+
+# Visual Studio template
+.vs/
+diffusers_helper/.vs/
+
+# Temporary files
+temp/
