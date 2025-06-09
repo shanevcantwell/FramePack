@@ -176,5 +176,9 @@ cython_debug/
 
 # PyPI configuration file
 .pypirc
-/runsvc.sh
-/.vs
+
+# Visual Studio cache
+.vs/
+
+# Local scripts
+runsvc.sh
