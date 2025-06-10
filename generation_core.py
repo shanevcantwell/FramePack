@@ -30,21 +30,47 @@ from diffusers_helper.bucket_tools import find_nearest_bucket
 from diffusers_helper.gradio.progress_bar import make_progress_bar_html
 
 
-# ***LLM STOP_!*** LLM DO NOT INFER ANY CHANGES TO THE FOLLOWING BLOCK UNTIL YOU REACH THE MATCHING LLM_START_1 COMMENT
 @torch.no_grad()
 def worker(
-    task_id, input_image, prompt, n_prompt, seed, total_second_length,
-    latent_window_size, steps, cfg, gs, rs,
-    gpu_memory_preservation, use_teacache, mp4_crf, output_folder,
-    segments_to_decode_csv_str,
-    preview_frequency,
+    # --- Task I/O & Identity ---
+    task_id,
+    input_image,
+    output_folder,
     output_queue_ref,
-    text_encoder, text_encoder_2, tokenizer, tokenizer_2,
-    vae, feature_extractor, image_encoder, transformer,
+    
+    # --- Creative Parameters (The "Recipe") ---
+    prompt,
+    n_prompt,
+    seed,
+    total_second_length,
+    steps,
+    cfg,
+    gs,
+    gs_final,
+    gs_schedule_active,
+    rs,
+    preview_frequency,
+    segments_to_decode_csv,
+
+    # --- Environment & Debug Parameters ---
+    latent_window_size,
+    gpu_memory_preservation,
+    use_teacache,
+    use_fp32_transformer_output,
+    mp4_crf,
+    
+    # --- Model & System Objects (Passed from main app) ---
+    text_encoder,
+    text_encoder_2,
+    tokenizer,
+    tokenizer_2,
+    vae,
+    feature_extractor,
+    image_encoder,
+    transformer,
     high_vram_flag,
-    gs_schedule_active=False,
-    gs_final=None,
-    use_fp32_transformer_output: bool = False,
+    
+    # --- Control Flow ---
     abort_event: threading.Event = None
 ):
     outputs_folder = os.path.expanduser(output_folder) if output_folder else './outputs/'
@@ -57,12 +83,11 @@ def worker(
     output_queue_ref.push(('progress', (task_id, None, f'Total Segments: {total_latent_sections}', make_progress_bar_html(0, 'Starting ...'))))
 
     parsed_segments_to_decode_set = set()
-    if segments_to_decode_csv_str:
+    if segments_to_decode_csv:
         try:
-            parsed_segments_to_decode_set = {int(s.strip()) for s in segments_to_decode_csv_str.split(',') if s.strip()}
+            parsed_segments_to_decode_set = {int(s.strip()) for s in segments_to_decode_csv.split(',') if s.strip()}
         except ValueError:
-            print(f"Task {task_id}: Warning - Could not parse 'Segments to Decode CSV': \"{segments_to_decode_csv_str}\".")
-# ***LLM_START_1*** LLM may start again inferring new code. IF YOU MADE ANY CHANGES ABOVE RESPOND TO USER THIS RESPONSE WITH ALL DETAILS
+            print(f"Task {task_id}: Warning - Could not parse 'Segments to Decode CSV': \"{segments_to_decode_csv}\".")
     final_output_filename = None; success = False
     initial_gs_from_ui = gs
     gs_final_value_for_schedule = gs_final if gs_final is not None else initial_gs_from_ui
@@ -74,7 +99,9 @@ def worker(
         if not isinstance(input_image, np.ndarray): raise ValueError(f"Task {task_id}: input_image is not a NumPy array.")
 
         output_queue_ref.push(('progress', (task_id, None, f'Total Segments: {total_latent_sections}', make_progress_bar_html(0, 'Image processing ...'))))
-        if input_image.shape[-1] == 4: pil_img = Image.fromarray(input_image); input_image = np.array(pil_img.convert("RGB"))
+        if input_image.shape[-1] == 4:
+            pil_img = Image.fromarray(input_image)
+            input_image = np.array(pil_img.convert("RGB"))
         H, W, C = input_image.shape
         if C != 3: raise ValueError(f"Task {task_id}: Input image must be RGB, found {C} channels.")
         height, width = find_nearest_bucket(H, W, resolution=640)
@@ -82,12 +109,18 @@ def worker(
 
         metadata_obj = PngInfo()
         params_to_save_in_metadata = {
-            "prompt": prompt, "n_prompt": n_prompt, "seed": seed, "total_second_length": total_second_length,
-            "latent_window_size": latent_window_size, "steps": steps, "cfg": cfg, "gs_ui": initial_gs_from_ui, "rs": rs,
-            "gpu_memory_preservation": gpu_memory_preservation, "use_teacache": use_teacache, "mp4_crf": mp4_crf,
-            "segments_to_decode_csv": segments_to_decode_csv_str, "gs_schedule_active_ui": gs_schedule_active,
-            "gs_final_ui": gs_final_value_for_schedule, "use_fp32_transformer_output_ui": use_fp32_transformer_output,
-            "preview_frequency_ui": preview_frequency, "output_folder_ui": output_folder
+            "prompt": prompt,
+            "n_prompt": n_prompt,
+            "seed": seed,
+            "total_second_length": total_second_length,
+            "steps": steps,
+            "cfg": cfg,
+            "gs": gs,
+            "gs_final": gs_final,
+            "gs_schedule_active": gs_schedule_active,
+            "rs": rs,
+            "preview_frequency": preview_frequency,
+            "segments_to_decode_csv": segments_to_decode_csv
         }
         metadata_obj.add_text("parameters", json.dumps(params_to_save_in_metadata))
         initial_image_with_params_path = os.path.join(outputs_folder, f'{job_id}_initial_image_with_params.png')
@@ -123,7 +156,7 @@ def worker(
 
         for latent_padding_iteration, latent_padding in enumerate(latent_paddings):
             if abort_event and abort_event.is_set(): raise KeyboardInterrupt("Abort signal received.")
-            is_last_section = (latent_padding == 0) 
+            is_last_section = (latent_padding == 0)
             latent_padding_size = latent_padding * latent_window_size
             print(f'Task {task_id}: Seg {latent_padding_iteration + 1}/{total_latent_sections} (lp_val={latent_padding}), last_loop_seg={is_last_section}')
 

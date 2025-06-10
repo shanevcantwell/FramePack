@@ -1,3 +1,5 @@
+# Temporary callout to 
+
 from diffusers_helper.hf_login import login
 
 import os
@@ -18,7 +20,8 @@ import tempfile
 import atexit
 from pathlib import Path
 import threading
-
+import tkinter as tk
+from tkinter import filedialog
 from PIL import Image
 
 from diffusers import AutoencoderKLHunyuanVideo
@@ -42,35 +45,50 @@ args = parser.parse_args()
 
 abort_event = threading.Event()
 queue_lock = threading.Lock()
-AUTOSAVE_FILENAME = "framepack_svc_queue.zip"
 outputs_folder = './outputs_svc/'
 os.makedirs(outputs_folder, exist_ok=True)
-SETTINGS_FILENAME = "framepack_svc_settings.json"
 
-# --- CORRECTED: Synchronized parameter names with generation_core.py ---
-param_names_from_ui_for_task_creation = [
-    'input_image_gallery', 'prompt', 'n_prompt', 'total_second_length', 'seed',
-    'use_teacache', 'preview_frequency_ui', 'segments_to_decode_csv',
-    'gs_ui', 'gs_schedule_shape_ui', 'gs_final_ui', 'steps',
-    'cfg', 'latent_window_size', 'gpu_memory_preservation',
-    'use_fp32_transformer_output_ui', 'rs', 'mp4_crf', 'output_folder_ui'
-]
-task_param_names_for_worker = [
-    'input_image', 'prompt', 'n_prompt', 'total_second_length', 'seed',
-    'use_teacache', 'preview_frequency', 'segments_to_decode_csv_str',
-    'gs', 'gs_schedule_active', 'gs_final', 'steps',
-    'cfg', 'latent_window_size', 'gpu_memory_preservation',
-    'use_fp32_transformer_output', 'rs', 'mp4_crf', 'output_folder'
-]
-UI_PARAM_KEYS_FOR_METADATA_AND_DEFAULTS_SAVE_LOAD = param_names_from_ui_for_task_creation[1:]
+# --- MERGE: Refactored Settings Model ---
+# This new model separates creative settings (for PNG metadata) from environment settings.
+SETTINGS_FILENAME = "framepack_svc_settings.json" # The file for default workspace settings.
+AUTOSAVE_FILENAME = "framepack_svc_queue.zip"
 
+# 1. Creative "Recipe" Parameters (for portable PNG metadata and task editing)
+CREATIVE_PARAM_KEYS = [
+    'prompt', 'n_prompt', 'total_second_length', 'seed', 'preview_frequency_ui',
+    'segments_to_decode_csv', 'gs_ui', 'gs_schedule_shape_ui', 'gs_final_ui', 'steps', 'cfg', 'rs'
+]
+
+# 2. Environment/Debug Parameters (for the full workspace, machine/session-specific)
+ENVIRONMENT_PARAM_KEYS = [
+    'use_teacache', 'use_fp32_transformer_output_ui', 'gpu_memory_preservation',
+    'mp4_crf', 'output_folder_ui', 'latent_window_size'
+]
+
+# A comprehensive list of all UI components that define a task.
+ALL_TASK_UI_KEYS = CREATIVE_PARAM_KEYS + ENVIRONMENT_PARAM_KEYS
+
+# This maps UI key names to the names expected by the 'worker' function.
+# It acts as a bridge between the Gradio UI and the backend processing logic.
+UI_TO_WORKER_PARAM_MAP = {
+    'prompt': 'prompt', 'n_prompt': 'n_prompt', 'total_second_length': 'total_second_length',
+    'seed': 'seed', 'use_teacache': 'use_teacache', 'preview_frequency_ui': 'preview_frequency',
+    'segments_to_decode_csv': 'segments_to_decode_csv',
+    'gs_ui': 'gs',
+    'gs_schedule_shape_ui': 'gs_schedule_active', 
+    'gs_final_ui': 'gs_final', 'steps': 'steps', 'cfg': 'cfg',
+    'latent_window_size': 'latent_window_size', 'gpu_memory_preservation': 'gpu_memory_preservation',
+    'use_fp32_transformer_output_ui': 'use_fp32_transformer_output', 'rs': 'rs',
+    'mp4_crf': 'mp4_crf', 'output_folder_ui': 'output_folder'
+}
 print(f"FramePack SVC launching with args: {args}")
 
 # --- Model Loading ---
-print("Initializing models...")
 free_mem_gb = get_cuda_free_memory_gb(gpu)
 high_vram = free_mem_gb > 60
-print(f'Free VRAM {free_mem_gb} GB'); print(f'High-VRAM Mode: {high_vram}')
+print(f'Free VRAM {free_mem_gb} GB')
+print(f'High-VRAM Mode: {high_vram}')
+print("Initializing models...")
 text_encoder = LlamaModel.from_pretrained("hunyuanvideo-community/HunyuanVideo", subfolder='text_encoder', torch_dtype=torch.float16).cpu()
 text_encoder_2 = CLIPTextModel.from_pretrained("hunyuanvideo-community/HunyuanVideo", subfolder='text_encoder_2', torch_dtype=torch.float16).cpu()
 tokenizer = LlamaTokenizerFast.from_pretrained("hunyuanvideo-community/HunyuanVideo", subfolder='tokenizer')
@@ -98,54 +116,114 @@ print("Model configuration and placement complete.")
 def patched_video_is_playable(video_filepath): return True
 gr.processing_utils.video_is_playable = patched_video_is_playable
 
-def save_defaults(*ui_values_tuple):
-    settings_to_save = {}
-    temp_params_from_ui = dict(zip(UI_PARAM_KEYS_FOR_METADATA_AND_DEFAULTS_SAVE_LOAD, ui_values_tuple))
-    for key, value in temp_params_from_ui.items():
-        if key == 'gs_schedule_shape_ui':
-            settings_to_save['gs_schedule_active_ui'] = value != 'Off'
-        else:
-            settings_to_save[key] = value
-    try:
-        with open(SETTINGS_FILENAME, 'w', encoding='utf-8') as f: json.dump(settings_to_save, f, indent=4)
-        gr.Info(f"Defaults saved to {SETTINGS_FILENAME}")
-    except Exception as e: gr.Warning(f"Error saving defaults: {e}"); print(f"Error saving defaults: {e}"); traceback.print_exc()
+# --- MERGE: New and Refactored Settings Functions ---
 
-def load_defaults():
-    default_values_map = {
+def save_settings_to_file(filepath, *ui_values_tuple):
+    """Helper function to save the full UI state to a specified JSON file."""
+    # Create a dictionary from the UI component keys and their current values.
+    settings_to_save = dict(zip(ALL_TASK_UI_KEYS, ui_values_tuple))
+    try:
+        with open(filepath, 'w', encoding='utf-8') as f:
+            json.dump(settings_to_save, f, indent=4)
+        gr.Info(f"Workspace saved to {filepath}")
+        print(f"Workspace saved to {filepath}")
+    except Exception as e:
+        gr.Warning(f"Error saving workspace: {e}")
+        traceback.print_exc()
+
+def save_workspace(*ui_values_tuple):
+    """Prompts the user for a location and saves the full workspace."""
+    root = tk.Tk(); root.withdraw()
+    file_path = filedialog.asksaveasfilename(
+        title="Save Full Workspace As",
+        defaultextension=".json",
+        initialfile="framepack_workspace.json",
+        filetypes=[("JSON files", "*.json"), ("All files", "*.*")]
+    )
+    root.destroy()
+    if file_path:
+        save_settings_to_file(file_path, *ui_values_tuple)
+    else:
+        gr.Warning("Save cancelled by user.")
+
+def save_as_default_workspace(*ui_values_tuple):
+    """Saves the current UI state as the default workspace file."""
+    gr.Info(f"Saving current settings as default to {SETTINGS_FILENAME}")
+    save_settings_to_file(SETTINGS_FILENAME, *ui_values_tuple)
+
+def get_default_values_map():
+    """Returns a dictionary with default values for all UI parameters."""
+    return {
         'prompt': '', 'n_prompt': '', 'total_second_length': 5.0, 'seed': 31337,
         'use_teacache': True, 'preview_frequency_ui': 5, 'segments_to_decode_csv': '',
-        'gs_ui': 10.0, 'gs_schedule_active_ui': False, 'gs_final_ui': 10.0, 'steps': 25,
+        'gs_ui': 10.0, 'gs_schedule_shape_ui': 'Off', 'gs_final_ui': 10.0, 'steps': 25,
         'cfg': 1.0, 'latent_window_size': 9, 'gpu_memory_preservation': 6.0,
         'use_fp32_transformer_output_ui': False, 'rs': 0.0, 'mp4_crf': 18,
-        'output_folder_ui': outputs_folder
+        'output_folder_ui': outputs_folder,
     }
-    loaded_settings = {}; updates = []
-    if os.path.exists(SETTINGS_FILENAME):
+
+def load_settings_from_file(filepath):
+    """Loads settings from a file, merges with defaults, and returns UI updates."""
+    default_values_map = get_default_values_map()
+    updates = [gr.update()] * len(ALL_TASK_UI_KEYS)
+
+    try:
+        with open(filepath, 'r', encoding='utf-8') as f:
+            loaded_settings = json.load(f)
+        gr.Info(f"Loaded workspace from {filepath}")
+    except Exception as e:
+        gr.Warning(f"Could not load workspace from {filepath}: {e}")
+        loaded_settings = {}
+
+    final_settings = default_values_map.copy()
+    final_settings.update(loaded_settings)
+
+    for i, key in enumerate(ALL_TASK_UI_KEYS):
+        raw_value = final_settings.get(key)
+        new_val = raw_value
         try:
-            with open(SETTINGS_FILENAME, 'r', encoding='utf-8') as f: loaded_settings = json.load(f)
-            print(f"Loaded defaults from {SETTINGS_FILENAME}")
-        except Exception as e: print(f"Error loading defaults from {SETTINGS_FILENAME}: {e}"); loaded_settings = {}
+            # Perform robust type conversion for each parameter
+            if key in ['seed', 'latent_window_size', 'steps', 'mp4_crf', 'preview_frequency_ui']:
+                new_val = int(raw_value)
+            elif key in ['total_second_length', 'cfg', 'gs_ui', 'rs', 'gpu_memory_preservation', 'gs_final_ui']:
+                new_val = float(raw_value)
+            elif key in ['use_teacache', 'use_fp32_transformer_output_ui']:
+                if isinstance(raw_value, str):
+                    new_val = raw_value.lower() == 'true'
+                elif not isinstance(raw_value, bool):
+                    new_val = default_values_map.get(key)
+        except (ValueError, TypeError):
+            print(f"Settings Warning: Could not convert '{raw_value}' for '{key}'. Using default.")
+            new_val = default_values_map.get(key)
+        updates[i] = gr.update(value=new_val)
 
-    for name_ui in UI_PARAM_KEYS_FOR_METADATA_AND_DEFAULTS_SAVE_LOAD:
-        is_gs_schedule_key = name_ui == 'gs_schedule_shape_ui'
-        lookup_key = 'gs_schedule_active_ui' if is_gs_schedule_key else name_ui
-        default_val_key = 'gs_schedule_active_ui' if is_gs_schedule_key else name_ui
-        value_to_set = loaded_settings.get(lookup_key, default_values_map.get(default_val_key))
-
-        if is_gs_schedule_key:
-            value_to_set = "Linear" if value_to_set else "Off"
-        elif name_ui in ['seed', 'latent_window_size', 'steps', 'mp4_crf', 'preview_frequency_ui']:
-            try: value_to_set = int(value_to_set)
-            except (ValueError, TypeError): value_to_set = default_values_map.get(name_ui)
-        elif name_ui in ['total_second_length', 'cfg', 'gs_ui', 'rs', 'gpu_memory_preservation', 'gs_final_ui']:
-            try: value_to_set = float(value_to_set)
-            except (ValueError, TypeError): value_to_set = default_values_map.get(name_ui)
-        elif name_ui in ['use_teacache', 'use_fp32_transformer_output_ui']:
-            if isinstance(value_to_set, str): value_to_set = value_to_set.lower() == 'true'
-            elif not isinstance(value_to_set, bool): value_to_set = default_values_map.get(name_ui)
-        updates.append(gr.update(value=value_to_set))
     return updates
+
+def load_workspace():
+    """Prompts user for a workspace file and returns updates for the UI."""
+    root = tk.Tk(); root.withdraw()
+    file_path = filedialog.askopenfilename(
+        title="Select Workspace JSON File",
+        filetypes=[("JSON files", "*.json"), ("All files", "*.*")]
+    )
+    root.destroy()
+    if file_path:
+        return load_settings_from_file(file_path)
+    # Return an empty list of updates if the user cancels the dialog
+    return [gr.update()] * len(ALL_TASK_UI_KEYS)
+
+def load_default_workspace_on_start():
+    """On app start, checks for a default settings file and loads it."""
+    if os.path.exists(SETTINGS_FILENAME):
+        print(f"Found and loading default workspace from {SETTINGS_FILENAME}")
+        return load_settings_from_file(SETTINGS_FILENAME)
+    print("No default workspace file found. Using default values.")
+    # Return a list of updates that sets the UI to the hardcoded defaults
+    default_vals = get_default_values_map()
+    return [default_vals[key] for key in ALL_TASK_UI_KEYS]
+
+# --- End of Settings Function Refactor ---
+
 
 def np_to_base64_uri(np_array_or_tuple, format="png"):
     if np_array_or_tuple is None: return None
@@ -176,18 +254,27 @@ def update_queue_df_display(queue_state):
     return gr.DataFrame(value=data, visible=len(data) > 0)
 
 def add_or_update_task_in_queue(state_dict_gr_state, *args_from_ui_controls_tuple):
-    queue_state = get_queue_state(state_dict_gr_state); editing_task_id = queue_state.get("editing_task_id", None); input_images_gallery_output = args_from_ui_controls_tuple[0]
-    if not input_images_gallery_output: gr.Warning("Input image(s) are required!"); return state_dict_gr_state, update_queue_df_display(queue_state), gr.update(value="Add Task to Queue" if editing_task_id is None else "Update Task"), gr.update(visible=editing_task_id is not None)
-    tasks_added_count = 0; first_new_task_id = -1; base_params_for_worker_dict = {}
-    temp_params_from_ui = dict(zip(param_names_from_ui_for_task_creation, args_from_ui_controls_tuple))
+    queue_state = get_queue_state(state_dict_gr_state); editing_task_id = queue_state.get("editing_task_id", None)
+    
+    # The first argument is the image gallery, the rest are the parameter controls.
+    input_images_gallery_output = args_from_ui_controls_tuple[0]
+    all_ui_values_tuple = args_from_ui_controls_tuple[1:]
+    
+    if not input_images_gallery_output:
+        gr.Warning("Input image(s) are required!")
+        return state_dict_gr_state, update_queue_df_display(queue_state), gr.update(value="Add Task to Queue" if editing_task_id is None else "Update Task"), gr.update(visible=editing_task_id is not None)
 
-    for i, ui_key_name in enumerate(param_names_from_ui_for_task_creation):
-        if i == 0: continue
-        worker_key_name = task_param_names_for_worker[i]
-        if worker_key_name == 'gs_schedule_active':
-            base_params_for_worker_dict[worker_key_name] = temp_params_from_ui['gs_schedule_shape_ui'] != 'Off'
+    # MERGE: Create a dictionary of UI parameters from the new ALL_TASK_UI_KEYS list.
+    temp_params_from_ui = dict(zip(ALL_TASK_UI_KEYS, all_ui_values_tuple))
+    
+    # Build the dictionary of parameters that the backend worker function expects.
+    base_params_for_worker_dict = {}
+    for ui_key, worker_key in UI_TO_WORKER_PARAM_MAP.items():
+        if ui_key == 'gs_schedule_shape_ui':
+             # Special handling to convert the UI radio choice to a boolean for the worker.
+            base_params_for_worker_dict[worker_key] = temp_params_from_ui.get(ui_key) != 'Off'
         else:
-            base_params_for_worker_dict[worker_key_name] = temp_params_from_ui.get(ui_key_name)
+            base_params_for_worker_dict[worker_key] = temp_params_from_ui.get(ui_key)
 
     if editing_task_id is not None:
         if len(input_images_gallery_output) > 1: gr.Warning("Cannot update task with multiple images. Cancel edit."); return state_dict_gr_state, update_queue_df_display(queue_state), gr.update(value="Update Task"), gr.update(visible=True)
@@ -206,6 +293,7 @@ def add_or_update_task_in_queue(state_dict_gr_state, *args_from_ui_controls_tupl
             else: gr.Info(f"Task {editing_task_id} updated.")
             queue_state["editing_task_id"] = None
     else:
+        tasks_added_count = 0; first_new_task_id = -1
         with queue_lock:
             for img_tuple in input_images_gallery_output:
                 if not (isinstance(img_tuple, tuple) and len(img_tuple) > 0 and isinstance(img_tuple[0], np.ndarray)): gr.Warning("Skipping invalid image input."); continue
@@ -215,7 +303,9 @@ def add_or_update_task_in_queue(state_dict_gr_state, *args_from_ui_controls_tupl
                 queue_state["queue"].append(task); queue_state["next_id"] += 1; tasks_added_count += 1
         if tasks_added_count > 0: gr.Info(f"Added {tasks_added_count} task(s) (start ID: {first_new_task_id}).")
         else: gr.Warning("No valid tasks added.")
+    
     return state_dict_gr_state, update_queue_df_display(queue_state), gr.update(value="Add Task(s) to Queue", variant="secondary"), gr.update(visible=False)
+
 
 def cancel_edit_mode_action(state_dict_gr_state):
     queue_state = get_queue_state(state_dict_gr_state)
@@ -239,10 +329,17 @@ def remove_task_from_queue(state_dict_gr_state, selected_indices_list: list):
         else: gr.Warning("Invalid index for removal.")
     return state_dict_gr_state, update_queue_df_display(queue_state), removed_task_id
 
-def handle_queue_action_on_select(state_dict_gr_state, evt: gr.SelectData, *ui_param_controls_tuple):
-    if evt.index is None or evt.value not in ["↑", "↓", "✖", "✎"]: return [state_dict_gr_state, update_queue_df_display(get_queue_state(state_dict_gr_state))] + [gr.update()] * (len(ui_param_controls_tuple) + 3)
+def handle_queue_action_on_select(evt: gr.SelectData, state_dict_gr_state, *ui_param_controls_tuple):
+    if evt.index is None or evt.value not in ["↑", "↓", "✖", "✎"]:
+        # The number of UI controls to update has changed.
+        return [state_dict_gr_state, update_queue_df_display(get_queue_state(state_dict_gr_state))] + [gr.update()] * (len(ALL_TASK_UI_KEYS) + 4)
+
     row_index, col_index = evt.index; button_clicked = evt.value; queue_state = get_queue_state(state_dict_gr_state); queue = queue_state["queue"]; processing_flag = queue_state.get("processing", False)
-    outputs_list = [state_dict_gr_state, update_queue_df_display(queue_state)] + [gr.update()] * len(ui_param_controls_tuple) + [gr.update(), gr.update(), gr.update()]
+    
+    # MERGE: Build the output list based on the new UI component structure.
+    # [state, dataframe, image_gallery, ...all_task_ui_keys..., add_button, cancel_button, video_output]
+    outputs_list = [state_dict_gr_state, update_queue_df_display(queue_state)] + [gr.update()] * (len(ALL_TASK_UI_KEYS) + 4)
+    
     if button_clicked == "↑":
         if processing_flag and row_index == 0: gr.Warning("Cannot move processing task."); return outputs_list
         new_state, new_df = move_task_in_queue(state_dict_gr_state, 'up', [[row_index, col_index]]); outputs_list[0], outputs_list[1] = new_state, new_df
@@ -253,30 +350,41 @@ def handle_queue_action_on_select(state_dict_gr_state, evt: gr.SelectData, *ui_p
     elif button_clicked == "✖":
         if processing_flag and row_index == 0: gr.Warning("Cannot remove processing task."); return outputs_list
         new_state, new_df, removed_id = remove_task_from_queue(state_dict_gr_state, [[row_index, col_index]]); outputs_list[0], outputs_list[1] = new_state, new_df
-        if removed_id is not None and queue_state.get("editing_task_id", None) == removed_id: queue_state["editing_task_id"] = None; outputs_list[2 + len(ui_param_controls_tuple) + 0] = gr.update(value="Add Task(s) to Queue", variant="secondary"); outputs_list[2 + len(ui_param_controls_tuple) + 1] = gr.update(visible=False)
+        # If the removed task was being edited, cancel the edit mode.
+        if removed_id is not None and queue_state.get("editing_task_id", None) == removed_id:
+            queue_state["editing_task_id"] = None
+            outputs_list[2 + 1 + len(ALL_TASK_UI_KEYS)] = gr.update(value="Add Task(s) to Queue", variant="secondary") # add_task_button
+            outputs_list[2 + 1 + len(ALL_TASK_UI_KEYS) + 1] = gr.update(visible=False) # cancel_edit_task_button
     elif button_clicked == "✎":
         if processing_flag and row_index == 0: gr.Warning("Cannot edit processing task."); return outputs_list
         if 0 <= row_index < len(queue):
              task_to_edit = queue[row_index]; task_id_to_edit = task_to_edit['id']; params_to_load_to_ui = task_to_edit['params']
              queue_state["editing_task_id"] = task_id_to_edit; gr.Info(f"Editing Task {task_id_to_edit}.")
-             img_data_for_gallery = params_to_load_to_ui.get('input_image'); outputs_list[2] = gr.update(value=[(img_data_for_gallery, None)] if isinstance(img_data_for_gallery, np.ndarray) else None)
-             temp_ui_params = {}
-             for key, value in params_to_load_to_ui.items():
-                 if key == 'gs_schedule_active':
-                     temp_ui_params['gs_schedule_shape_ui'] = "Linear" if value else "Off"
-                 else:
-                     try:
-                         worker_idx = task_param_names_for_worker.index(key)
-                         ui_key = param_names_from_ui_for_task_creation[worker_idx]
-                         temp_ui_params[ui_key] = value
-                     except (ValueError, IndexError):
-                         pass
-             for i, ui_key_name_from_list in enumerate(param_names_from_ui_for_task_creation):
-                 if ui_key_name_from_list in temp_ui_params:
-                     outputs_list[2 + i] = gr.update(value=temp_ui_params[ui_key_name_from_list])
-             outputs_list[2 + len(ui_param_controls_tuple) + 0] = gr.update(value="Update Task", variant="secondary"); outputs_list[2 + len(ui_param_controls_tuple) + 1] = gr.update(visible=True)
+             
+             # Update the input image gallery
+             img_data_for_gallery = params_to_load_to_ui.get('input_image')
+             outputs_list[2] = gr.update(value=[(img_data_for_gallery, None)] if isinstance(img_data_for_gallery, np.ndarray) else None)
+             
+             # MERGE: Map worker params back to UI controls for editing.
+             # This uses the REVERSE of the UI_TO_WORKER_PARAM_MAP logic.
+             worker_to_ui_map = {v: k for k, v in UI_TO_WORKER_PARAM_MAP.items()}
+             
+             for i, ui_key in enumerate(ALL_TASK_UI_KEYS):
+                 worker_key = UI_TO_WORKER_PARAM_MAP.get(ui_key)
+                 if worker_key in params_to_load_to_ui:
+                     value_from_task = params_to_load_to_ui[worker_key]
+                     # Handle special cases
+                     if ui_key == 'gs_schedule_shape_ui':
+                         outputs_list[3 + i] = gr.update(value="Linear" if value_from_task else "Off")
+                     else:
+                         outputs_list[3 + i] = gr.update(value=value_from_task)
+
+             # Update the buttons for edit mode
+             outputs_list[2 + 1 + len(ALL_TASK_UI_KEYS)] = gr.update(value="Update Task", variant="secondary") # add_task_button
+             outputs_list[2 + 1 + len(ALL_TASK_UI_KEYS) + 1] = gr.update(visible=True) # cancel_edit_task_button
         else: gr.Warning("Invalid index for edit.")
     return outputs_list
+
 
 def clear_task_queue_action(state_dict_gr_state):
     queue_state = get_queue_state(state_dict_gr_state); queue = queue_state["queue"]; processing = queue_state["processing"]; cleared_count = 0
@@ -409,18 +517,18 @@ def handle_image_upload_for_metadata(gallery_data_list):
     try:
         pil_image = Image.fromarray(first_image_tuple[0])
         metadata = extract_metadata_from_pil_image(pil_image)
-        if metadata:
+        # MERGE: Only show the modal if creative parameters are found in the metadata.
+        if metadata and any(key in metadata for key in CREATIVE_PARAM_KEYS):
             return gr.update(visible=True)
     except Exception:
         pass
     return gr.update(visible=False)
 
-def apply_and_hide_modal(gallery_data_list, *current_ui_values_tuple_default_settings_components):
-    updates = ui_load_params_from_image_metadata(gallery_data_list, *current_ui_values_tuple_default_settings_components)
-    return [gr.update(visible=False)] + updates
-
-def ui_load_params_from_image_metadata(gallery_data_list, *current_ui_values_tuple_default_settings_components):
-    updates_for_ui = [gr.update()] * len(UI_PARAM_KEYS_FOR_METADATA_AND_DEFAULTS_SAVE_LOAD)
+def ui_load_params_from_image_metadata(gallery_data_list):
+    """MERGE: Loads ONLY creative parameters from image metadata and returns UI updates."""
+    # This list will hold gr.update() objects only for the creative UI components.
+    updates_for_ui = [gr.update()] * len(CREATIVE_PARAM_KEYS)
+    
     try:
         pil_image = Image.fromarray(gallery_data_list[0][0])
         extracted_metadata = extract_metadata_from_pil_image(pil_image)
@@ -431,29 +539,37 @@ def ui_load_params_from_image_metadata(gallery_data_list, *current_ui_values_tup
         gr.Info("No relevant parameters found in image metadata.")
         return updates_for_ui
 
-    gr.Info(f"Found metadata, applying to UI...")
+    gr.Info(f"Found metadata, applying to creative settings...")
     num_applied = 0
+    default_values_map = get_default_values_map()
     params_to_apply = {}
-    for key, value in extracted_metadata.items():
-        if key == 'gs_schedule_active_ui':
-            params_to_apply['gs_schedule_shape_ui'] = "Linear" if str(value).lower() == 'true' else "Off"
-        else:
-            params_to_apply[key] = value
 
-    for i, name_ui in enumerate(UI_PARAM_KEYS_FOR_METADATA_AND_DEFAULTS_SAVE_LOAD):
-        if name_ui in params_to_apply:
-            raw_value = params_to_apply[name_ui]
+    # Special handling for gs_schedule_active_ui, mapping it back to gs_schedule_shape_ui
+    if 'gs_schedule_active_ui' in extracted_metadata:
+        params_to_apply['gs_schedule_shape_ui'] = "Linear" if str(extracted_metadata['gs_schedule_active_ui']).lower() == 'true' else "Off"
+    
+    # Iterate through only the creative keys to build the update list.
+    for i, key in enumerate(CREATIVE_PARAM_KEYS):
+        if key in extracted_metadata or key in params_to_apply:
+            raw_value = params_to_apply.get(key, extracted_metadata.get(key))
+            new_val = raw_value
             try:
-                if name_ui in ['seed', 'latent_window_size', 'steps', 'mp4_crf', 'preview_frequency_ui']: new_val = int(raw_value)
-                elif name_ui in ['total_second_length', 'cfg', 'gs_ui', 'rs', 'gpu_memory_preservation', 'gs_final_ui']: new_val = float(raw_value)
-                elif name_ui in ['use_teacache', 'use_fp32_transformer_output_ui']: new_val = str(raw_value).lower() == 'true'
-                else: new_val = raw_value
-                updates_for_ui[i] = gr.update(value=new_val); num_applied += 1
+                # Apply the same robust type checking as the main settings loader
+                if key in ['seed', 'steps', 'preview_frequency_ui']: new_val = int(raw_value)
+                elif key in ['total_second_length', 'cfg', 'gs_ui', 'rs', 'gs_final_ui']: new_val = float(raw_value)
+                
+                updates_for_ui[i] = gr.update(value=new_val)
+                num_applied += 1
             except (ValueError, TypeError) as ve:
-                print(f"Metadata Warning: Could not convert '{raw_value}' for '{name_ui}': {ve}")
+                print(f"Metadata Warning: Could not convert '{raw_value}' for '{key}': {ve}")
 
     if num_applied > 0: gr.Info(f"Applied {num_applied} parameter(s) from image metadata.")
     return updates_for_ui
+
+def apply_and_hide_modal(gallery_data_list):
+    """Helper to apply metadata and then hide the modal."""
+    updates = ui_load_params_from_image_metadata(gallery_data_list)
+    return [gr.update(visible=False)] + updates
 
 def ui_update_total_segments(total_seconds_ui, latent_window_size_ui):
     if not isinstance(total_seconds_ui, (int, float)) or not isinstance(latent_window_size_ui, (int, float)): return "Segments: Invalid input"
@@ -537,7 +653,7 @@ with block:
     gr.Markdown('# FramePack SVC (Stable Video Creation)')
 
     with Modal(visible=False) as metadata_modal:
-        gr.Markdown("Image has saved parameters. Overwrite current settings?")
+        gr.Markdown("Image has saved parameters. Overwrite current creative settings?")
         with gr.Row():
             cancel_metadata_btn = gr.Button("No, Keep Current")
             confirm_metadata_btn = gr.Button("Yes, Apply Settings", variant="primary")
@@ -545,34 +661,40 @@ with block:
     with gr.Row():
         with gr.Column(scale=1):
             input_image_gallery_ui = gr.Gallery(type="numpy", label="Input Image(s)", height=320, preview=True, allow_preview=True)
+            
+            # --- MERGE: Creative UI Components ---
             prompt_ui = gr.Textbox(label="Prompt", lines=3, placeholder="A detailed description of the motion to generate.")
-            example_quick_prompts_ui = gr.Dataset(visible=False, components=[prompt_ui])
+            example_quick_prompts_ui = gr.Dataset(visible=True, components=[prompt_ui])
             n_prompt_ui = gr.Textbox(label="Negative Prompt", lines=2, placeholder="Concepts to avoid.")
             with gr.Row():
                 total_second_length_ui = gr.Slider(label="Total Video Length (Seconds)", minimum=0.1, maximum=120, value=5.0, step=0.1)
                 seed_ui = gr.Number(label="Seed", value=31337, precision=0)
-
+            
             with gr.Accordion("Advanced Settings", open=False):
-                use_teacache_ui = gr.Checkbox(label='Use TeaCache (Optimize Speed)', value=True)
                 total_segments_display_ui = gr.Markdown("Calculated Total Segments: N/A")
-                preview_frequency_ui = gr.Slider(label="Live Preview Frequency", minimum=0, maximum=100, value=5, step=1, info="Update live preview every N steps (0=off).")
-                segments_to_decode_csv_ui = gr.Textbox(label="Save MP4s on Specific Segments", placeholder="e.g., 1,5,10. Saves first & final by default.", value="")
+                preview_frequency_ui = gr.Slider(label="Preview Frequency", minimum=0, maximum=100, value=5, step=1, info="Produce mp4 preview every N steps (0=off).")
+                segments_to_decode_csv_ui = gr.Textbox(label="Preview Segments", placeholder="e.g., 1,5,10. Always saves first & final mp4.", value="")
                 with gr.Row():
                     gs_ui = gr.Slider(label="Distilled CFG Start", minimum=1.0, maximum=32.0, value=10.0, step=0.01)
                     gs_schedule_shape_ui = gr.Radio(["Off", "Linear"], label="Variable CFG", value="Off")
                     gs_final_ui = gr.Slider(label="Distilled CFG End", minimum=1.0, maximum=32.0, value=10.0, step=0.01, interactive=False)
-                steps_ui = gr.Slider(label="Steps", minimum=1, maximum=100, value=25, step=1)
+                    cfg_ui = gr.Slider(label="CFG (Real)", minimum=1.0, maximum=32.0, value=1.0, step=0.01)
+                    rs_ui = gr.Slider(label="RS", minimum=0.0, maximum=32.0, value=0.0, step=0.01) 
+                    steps_ui = gr.Slider(label="Steps", minimum=1, maximum=100, value=25, step=1)
 
-                with gr.Accordion("Debug Settings", open=False):
-                    cfg_ui = gr.Slider(label="CFG Scale (Real Guidance)", minimum=1.0, maximum=32.0, value=1.0, step=0.01)
-                    latent_window_size_ui = gr.Slider(label="Latent Window Size", minimum=1, maximum=33, value=9, step=1)
-                    gpu_memory_preservation_ui = gr.Slider(label="GPU Preserved Memory (GB)", minimum=4, maximum=128, value=6.0, step=0.1)
-                    use_fp32_transformer_output_checkbox_ui = gr.Checkbox(label="Use FP32 Transformer Output", value=False)
-                    rs_ui = gr.Slider(label="CFG Re-Scale", minimum=0.0, maximum=1.0, value=0.0, step=0.01, interactive=False)
-                    mp4_crf_ui = gr.Slider(label="MP4 Compression (CRF)", minimum=0, maximum=51, value=18, step=1)
-                    output_folder_ui_ctrl = gr.Textbox(label="Output Folder", value=outputs_folder)
-            
-            save_defaults_button = gr.Button(value="Save Current Settings as Default", variant="secondary")
+            # --- MERGE: Environment & Debug UI Components ---
+            with gr.Accordion("Debug Settings", open=False):
+                use_teacache_ui = gr.Checkbox(label='Use TeaCache (Optimize Speed)', value=True)
+                use_fp32_transformer_output_checkbox_ui = gr.Checkbox(label="Use FP32 Transformer Output", value=False)
+                gpu_memory_preservation_ui = gr.Slider(label="GPU Preserved Memory (GB)", minimum=4, maximum=128, value=6.0, step=0.1)
+                mp4_crf_ui = gr.Slider(label="MP4 Compression (CRF)", minimum=0, maximum=51, value=18, step=1)
+                latent_window_size_ui = gr.Slider(label="Latent Window Size", minimum=1, maximum=33, value=9, step=1, visible=False) # requires unique knowledge and time to tune any change
+                output_folder_ui_ctrl = gr.Textbox(label="Output Folder", value=outputs_folder)
+                save_as_default_button = gr.Button(value="Save Current as Default", variant="secondary") # New button
+
+            # --- MERGE: Main Workspace Save/Load Buttons ---
+            save_workspace_button = gr.Button(value="Save Workspace", variant="secondary") # Renamed
+            load_workspace_button = gr.Button(value="Load Workspace", variant="secondary") # Renamed
 
         with gr.Column(scale=2):
             gr.Markdown("## Task Queue")
@@ -591,35 +713,66 @@ with block:
             gr.Markdown("## Output Video")
             last_finished_video_ui = gr.Video(interactive=True, autoplay=False)
 
-    task_defining_ui_inputs = [input_image_gallery_ui, prompt_ui, n_prompt_ui, total_second_length_ui, seed_ui,
-                               use_teacache_ui, preview_frequency_ui, segments_to_decode_csv_ui, gs_ui,
-                               gs_schedule_shape_ui, gs_final_ui, steps_ui, cfg_ui, latent_window_size_ui,
-                               gpu_memory_preservation_ui, use_fp32_transformer_output_checkbox_ui, rs_ui,
-                               mp4_crf_ui, output_folder_ui_ctrl]
-    default_settings_components_list = task_defining_ui_inputs[1:]
-    process_queue_outputs_list = [app_state, queue_df_display_ui, last_finished_video_ui, current_task_preview_image_ui, current_task_progress_desc_ui, current_task_progress_bar_ui, process_queue_button, abort_task_button]
-    queue_df_select_outputs_list = [app_state, queue_df_display_ui] + task_defining_ui_inputs + [add_task_button, cancel_edit_task_button, last_finished_video_ui]
+    # --- MERGE: Define explicit lists of UI components for wiring up events ---
+    creative_ui_components = [
+        prompt_ui, n_prompt_ui, total_second_length_ui, seed_ui, preview_frequency_ui,
+        segments_to_decode_csv_ui, gs_ui, gs_schedule_shape_ui, gs_final_ui, steps_ui, cfg_ui, rs_ui
+    ]
+    environment_ui_components = [
+        use_teacache_ui, use_fp32_transformer_output_checkbox_ui, gpu_memory_preservation_ui,
+        mp4_crf_ui, output_folder_ui_ctrl, latent_window_size_ui
+    ]
+    full_workspace_ui_components = creative_ui_components + environment_ui_components
 
+    task_defining_ui_inputs = [input_image_gallery_ui] + full_workspace_ui_components
+    
+    process_queue_outputs_list = [app_state, queue_df_display_ui, last_finished_video_ui, current_task_preview_image_ui, current_task_progress_desc_ui, current_task_progress_bar_ui, process_queue_button, abort_task_button]
+    
+    # This list defines all the UI elements that can be updated when a task is selected for editing.
+    queue_df_select_outputs_list = [app_state, queue_df_display_ui, input_image_gallery_ui] + full_workspace_ui_components + [add_task_button, cancel_edit_task_button, last_finished_video_ui]
+
+    # 1. Workspace Settings (.json file) Handlers
+    save_workspace_button.click(fn=save_workspace, inputs=full_workspace_ui_components, outputs=[])
+    load_workspace_button.click(fn=load_workspace, inputs=[], outputs=full_workspace_ui_components)
+    save_as_default_button.click(fn=save_as_default_workspace, inputs=full_workspace_ui_components, outputs=[])
+
+    # 2. PNG Metadata (Creative Recipe) Handlers
+    input_image_gallery_ui.change(fn=handle_image_upload_for_metadata, inputs=[input_image_gallery_ui], outputs=[metadata_modal])
+    confirm_metadata_outputs = [metadata_modal] + creative_ui_components
+    confirm_metadata_btn.click(fn=apply_and_hide_modal, inputs=[input_image_gallery_ui], outputs=confirm_metadata_outputs)
+    cancel_metadata_btn.click(lambda: gr.update(visible=False), None, metadata_modal)
+
+    # 3. Queue and Processing Logic
     add_task_button.click(fn=add_or_update_task_in_queue, inputs=[app_state] + task_defining_ui_inputs, outputs=[app_state, queue_df_display_ui, add_task_button, cancel_edit_task_button])
     process_queue_button.click(fn=process_task_queue_main_loop, inputs=[app_state], outputs=process_queue_outputs_list)
     cancel_edit_task_button.click(fn=cancel_edit_mode_action, inputs=[app_state], outputs=[app_state, queue_df_display_ui, add_task_button, cancel_edit_task_button])
     abort_task_button.click(fn=abort_current_task_processing_action, inputs=[app_state], outputs=[app_state, abort_task_button])
     clear_queue_button_ui.click(fn=clear_task_queue_action, inputs=[app_state], outputs=[app_state, queue_df_display_ui])
-    save_defaults_button.click(fn=save_defaults, inputs=default_settings_components_list, outputs=[])
     save_queue_button_ui.click(fn=save_queue_to_zip, inputs=[app_state], outputs=[app_state, save_queue_zip_b64_output]).then(fn=None, inputs=[save_queue_zip_b64_output], outputs=None, js="""(b64) => { if(!b64) return; const blob = new Blob([Uint8Array.from(atob(b64), c => c.charCodeAt(0))], {type: 'application/zip'}); const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href=url; a.download='framepack_svc_queue.zip'; document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(url); }""")
     load_queue_button_ui.upload(fn=load_queue_from_zip, inputs=[app_state, load_queue_button_ui], outputs=[app_state, queue_df_display_ui])
     queue_df_display_ui.select(fn=handle_queue_action_on_select, inputs=[app_state] + task_defining_ui_inputs, outputs=queue_df_select_outputs_list)
-    
-    confirm_metadata_outputs = [metadata_modal] + default_settings_components_list
-    input_image_gallery_ui.change(fn=handle_image_upload_for_metadata, inputs=[input_image_gallery_ui], outputs=[metadata_modal])
-    confirm_metadata_btn.click(fn=apply_and_hide_modal, inputs=[input_image_gallery_ui] + default_settings_components_list, outputs=confirm_metadata_outputs)
-    cancel_metadata_btn.click(lambda: gr.update(visible=False), None, metadata_modal)
-
     def toggle_gs_final(gs_schedule_choice): return gr.update(interactive=(gs_schedule_choice != "Off"))
     gs_schedule_shape_ui.change(fn=toggle_gs_final, inputs=[gs_schedule_shape_ui], outputs=[gs_final_ui])
     for ctrl in [total_second_length_ui, latent_window_size_ui]: ctrl.change(fn=ui_update_total_segments, inputs=[total_second_length_ui, latent_window_size_ui], outputs=[total_segments_display_ui])
-    
-    block.load(fn=load_defaults, inputs=[], outputs=default_settings_components_list).then(fn=autoload_queue_on_start_action, inputs=[app_state], outputs=[app_state, queue_df_display_ui]).then(lambda s_val: global_state_for_autosave_dict.update(s_val), inputs=[app_state], outputs=None).then(fn=ui_update_total_segments, inputs=[total_second_length_ui, latent_window_size_ui], outputs=[total_segments_display_ui])
+
+    # 5. Application Load Sequence
+    block.load(
+        fn=load_default_workspace_on_start, 
+        inputs=[], 
+        outputs=full_workspace_ui_components
+    ).then(
+        fn=autoload_queue_on_start_action, 
+        inputs=[app_state], 
+        outputs=[app_state, queue_df_display_ui]
+    ).then(
+        lambda s_val: global_state_for_autosave_dict.update(s_val), 
+        inputs=[app_state], 
+        outputs=None
+    ).then(
+        fn=ui_update_total_segments, 
+        inputs=[total_second_length_ui, latent_window_size_ui], 
+        outputs=[total_segments_display_ui]
+    )
 
 expanded_outputs_folder = os.path.abspath(os.path.expanduser(outputs_folder))
 if __name__ == "__main__":
