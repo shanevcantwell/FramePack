@@ -189,3 +189,4 @@ tmp/
 framepack_svc_queue.zip
 hf_download					# to ensure symlink is caught correctly
 hf_download/
+outputs_svc/

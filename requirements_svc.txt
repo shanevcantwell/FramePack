@@ -12,6 +12,11 @@ torchsde==0.2.6
 
 einops
 opencv-contrib-python
+safetensors
 
 # --- FramePack_svc requirement ---
 gradio-modal
+
+# --- OK if one fails but less so if they both do ---
+xformers
+sageattention
