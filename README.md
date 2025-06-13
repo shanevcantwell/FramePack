@@ -1,3 +1,10 @@
+This fork of lllyasviel's FramePack is in-development and still mid-refactor so it's not in a working state this moment.
+
+The documentation is still also forked from lllyasviel. Updates imminent.
+
+FramePack info:
+
+
 <p align="center">
     <img src="https://github.com/user-attachments/assets/2cc030b4-87e1-40a0-b5bf-1b7d6b62820b" width="300">
 </p>
