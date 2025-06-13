@@ -57,3 +57,8 @@ This entire feature set is new in `goan` to extend power user functionality to F
 ### For Developers: A Look Under the Hood (pending review)
 
 ### Code Example: A Glimpse at the New Architecture (pending review)
+
+### Acknowledgements
+
+* **@lllyasviel** for creating the groundbreaking FramePack engine.
+* **@Tophness** for the super-useful queueing system architecture introduced in FramePack PR #150, from which forms the foundation of goan's task management, background processing, and progress update features.
