@@ -71,7 +71,7 @@ def worker(
     feature_extractor,
     image_encoder,
     transformer,
-    high_vram_flag,
+    high_vram,
     # --- Control Flow ---
     abort_event: threading.Event = None,
 ):
@@ -176,7 +176,7 @@ def worker(
             )
 
         # --- Gemini: do not touch - "secret sauce"
-        if not high_vram_flag:
+        if not high_vram:
             unload_complete_models(
                 text_encoder, text_encoder_2, image_encoder, vae, transformer
             )
@@ -191,7 +191,7 @@ def worker(
                 ),
             )
         )
-        if not high_vram_flag:
+        if not high_vram:
             fake_diffusers_current_device(text_encoder, gpu)
             load_model_as_complete(text_encoder_2, target_device=gpu)
         llama_vec, clip_l_pooler = encode_prompt_conds(
@@ -226,7 +226,7 @@ def worker(
                 ),
             )
         )
-        if not high_vram_flag:
+        if not high_vram:
             load_model_as_complete(vae, target_device=gpu)
         start_latent = vae_encode(input_image_pt, vae)
         output_queue_ref.push(
@@ -240,7 +240,7 @@ def worker(
                 ),
             )
         )
-        if not high_vram_flag:
+        if not high_vram:
             load_model_as_complete(image_encoder, target_device=gpu)
         image_encoder_output = hf_clip_vision_encode(
             input_image_np, feature_extractor, image_encoder
@@ -340,7 +340,7 @@ def worker(
             ].split([1, 2, 16], dim=2)
             clean_latents = torch.cat([clean_latents_pre, clean_latents_post], dim=2)
 
-            if not high_vram_flag:
+            if not high_vram:
                 unload_complete_models()
                 move_model_to_device_with_memory_preservation(
                     transformer,
@@ -463,7 +463,7 @@ def worker(
                 [generated_latents.to(history_latents), history_latents], dim=2
             )
 
-            if not high_vram_flag:
+            if not high_vram:
                 offload_model_from_device_for_memory_preservation(
                     transformer, target_device=gpu, preserved_memory_gb=8
                 )
@@ -489,7 +489,7 @@ def worker(
                     current_pixels, history_pixels, overlapped_frames
                 )
 
-            if not high_vram_flag:
+            if not high_vram:
                 unload_complete_models()
 
             current_video_frame_count = history_pixels.shape[2]
@@ -602,7 +602,7 @@ def worker(
         print(
             f"Task {task_id}: Restored transformer.high_quality_fp32_output_for_inference to {original_fp32_setting}"
         )
-        if not high_vram_flag:
+        if not high_vram:
             unload_complete_models(
                 text_encoder, text_encoder_2, image_encoder, vae, transformer
             )
