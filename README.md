@@ -1,3 +1,5 @@
+(Note: very brittle, needs state tuning, save&refresh still isn't managing to re-connect to service's state)
+
 # goan: A Power-User UI for FramePack
 
 Welcome to `goan`, an enhanced user interface designed for creative professionals and power users of FramePack. This project builds upon the brilliant FramePack video generation engine created by lllyasviel (of Fooocus and the Stable Diffusion Forge fork of A1111), exposing useful controls to reach further into FramePack's functionality through a robust and intuitive interface.
