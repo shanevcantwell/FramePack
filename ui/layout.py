@@ -62,7 +62,7 @@ def create_ui():
                 components['input_image_gallery_ui'] = gr.Gallery(type="pil", label="Input Image(s)", height=220)
                 components['add_task_button'] = gr.Button("Add to Queue", variant="secondary")
                 components['process_queue_button'] = gr.Button("▶️ Process Queue", variant="primary")
-                components['abort_task_button'] = gr.Button("⏹️ Abort", variant="stop", interactive=False)
+                components['abort_task_button'] = gr.Button("⏹️ Abort", variant="stop", interactive=True) # default to active on startup in case service is still running
                 components['cancel_edit_task_button'] = gr.Button("Cancel Edit", visible=False, variant="secondary")
 
             # Column 2: Prompts
@@ -87,7 +87,7 @@ def create_ui():
                 with gr.Row():
                     components['total_second_length_ui'] = gr.Slider(label="Video Length (s)", minimum=0.1, maximum=120, value=5.0, step=0.1)
                     components['seed_ui'] = gr.Number(label="Seed", value=-1, precision=0)
-                with gr.Accordion("Advanced Settings", open=True):
+                with gr.Accordion("Advanced Settings", open=False): # keep default closed on startup
                     components['total_segments_display_ui'] = gr.Markdown("Calculated Total Segments: N/A")
                     components['preview_frequency_ui'] = gr.Slider(label="Preview Freq.", minimum=0, maximum=100, value=5, step=1)
                     components['segments_to_decode_csv_ui'] = gr.Textbox(label="Preview Segments CSV", value="")
@@ -98,18 +98,18 @@ def create_ui():
                     components['cfg_ui'] = gr.Slider(label="CFG (Real)", minimum=1.0, maximum=32.0, value=1.0, step=0.01)
                     components['steps_ui'] = gr.Slider(label="Steps", minimum=1, maximum=100, value=25, step=1)
                     components['rs_ui'] = gr.Slider(label="RS", minimum=0.0, maximum=32.0, value=0.0, step=0.01, visible=False)
-                with gr.Accordion("Debug Settings", open=True):
+                with gr.Accordion("Debug Settings", open=False): # keep default closed on startup
                     components['use_teacache_ui'] = gr.Checkbox(label='Use TeaCache', value=True)
                     components['use_fp32_transformer_output_checkbox_ui'] = gr.Checkbox(label="Use FP32 Transformer Output", value=False)
                     components['gpu_memory_preservation_ui'] = gr.Slider(label="GPU Preserved (GB)", minimum=4, maximum=128, value=6.0, step=0.1)
                     components['mp4_crf_ui'] = gr.Slider(label="MP4 CRF", minimum=0, maximum=51, value=18, step=1)
                     components['latent_window_size_ui'] = gr.Slider(label="Latent Window Size", minimum=1, maximum=33, value=9, step=1, visible=False)
                     components['output_folder_ui_ctrl'] = gr.Textbox(label="Output Folder", value=workspace_manager.outputs_folder)
-                
-                # UI and Workspace Management Buttons
-                with gr.Row():
                     components['save_as_default_button'] = gr.Button("Save as Default", variant="secondary")
                     components['reset_ui_button'] = gr.Button("Save & Refresh UI", variant="secondary")
+
+                
+                # UI and Workspace Management Buttons
                 with gr.Row():
                     components['save_workspace_button'] = gr.Button("Save Workspace", variant="secondary")
                     components['load_workspace_button'] = gr.Button("Load Workspace", variant="secondary")

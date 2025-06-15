@@ -265,7 +265,7 @@ def autoload_queue_on_start_action(state_dict_gr_state):
         print(f"Autoloading queue from {AUTOSAVE_FILENAME}...")
         class MockFilepath:
             def __init__(self, name): self.name = name
-        
+
         temp_state_for_load = {"queue_state": queue_state.copy()}
         loaded_state_result, df_update_after_load = load_queue_from_zip(temp_state_for_load, MockFilepath(AUTOSAVE_FILENAME))
 
@@ -303,10 +303,22 @@ def process_task_queue_main_loop(state_dict_gr_state):
     if queue_state["processing"]:
         gr.Info("Queue processing is already active. Attempting to re-attach UI to live updates...")
         if output_stream_for_ui is None:
-            gr.Warning("No active stream found in state. Queue processing may have been interrupted. Please clear queue or restart.")
-            queue_state["processing"] = False
+            gr.Warning("No active stream found in state. Queue processing may have been interrupted. Please clear queue or restart."); queue_state["processing"] = False
             yield (state_dict_gr_state, update_queue_df_display(queue_state), gr.update(), gr.update(), gr.update(), gr.update(), gr.update(interactive=True), gr.update(interactive=False), gr.update(interactive=True)); return
-        yield (state_dict_gr_state, update_queue_df_display(queue_state), gr.update(), gr.update(), gr.update(value=f"Re-attaching to processing Task {queue_state['queue'][0]['id']}..."), gr.update(value=""), gr.update(interactive=False), gr.update(interactive=True), gr.update(interactive=True))
+
+        # --- MODIFIED: Initial yield for re-attachment path ---
+        # Provide placeholder updates to progress/preview UI elements
+        yield (
+            state_dict_gr_state,
+            update_queue_df_display(queue_state),
+            gr.update(value=state_dict_gr_state.get("last_completed_video_path", None)), # Keep last video if available
+            gr.update(visible=True, value=None), # Make preview visible but start blank until new data
+            gr.update(value=f"Re-attaching to processing Task {queue_state['queue'][0]['id']}... Awaiting next preview."),
+            gr.update(value="<div style='text-align: center;'>Re-connecting...</div>"), # Generic HTML for progress bar
+            gr.update(interactive=False), # Process Queue button
+            gr.update(interactive=True),  # Abort button
+            gr.update(interactive=True)   # Reset button
+        )
     elif not queue_state["queue"]:
         gr.Info("Queue is empty. Add tasks to process.")
         yield (state_dict_gr_state, update_queue_df_display(queue_state), gr.update(), gr.update(), gr.update(), gr.update(), gr.update(interactive=True), gr.update(interactive=False), gr.update(interactive=True)); return
@@ -318,8 +330,7 @@ def process_task_queue_main_loop(state_dict_gr_state):
 
     actual_output_queue = output_stream_for_ui.output_queue if output_stream_for_ui else None
     if not actual_output_queue:
-        gr.Warning("Internal error: Output queue not available. Aborting.")
-        queue_state["processing"] = False; state_dict_gr_state["active_output_stream_queue"] = None
+        gr.Warning("Internal error: Output queue not available. Aborting."); queue_state["processing"] = False; state_dict_gr_state["active_output_stream_queue"] = None
         yield (state_dict_gr_state, update_queue_df_display(queue_state), gr.update(), gr.update(), gr.update(), gr.update(), gr.update(interactive=True), gr.update(interactive=False), gr.update(interactive=True)); return
 
     while queue_state["queue"] and not shared_state.abort_event.is_set():
@@ -332,11 +343,11 @@ def process_task_queue_main_loop(state_dict_gr_state):
         if task_parameters_for_worker.get('input_image') is None:
             print(f"Skipping task {current_task_id}: Missing input image data.")
             gr.Warning(f"Task {current_task_id} skipped: Input image is missing.")
-            with shared_state.queue_lock: current_task_obj["status"] = "error"; current_task_obj["error_message"] = "Missing Image"
+            with shared_state.queue_lock: 
+                current_task_obj["status"] = "error"; current_task_obj["error_message"] = "Missing Image"
             yield (state_dict_gr_state, update_queue_df_display(queue_state), gr.update(), gr.update(visible=False), gr.update(), gr.update(), gr.update(interactive=False), gr.update(interactive=True), gr.update(interactive=True)); break
 
-        if task_parameters_for_worker.get('seed') == -1:
-            task_parameters_for_worker['seed'] = np.random.randint(0, 2**32 - 1)
+        if task_parameters_for_worker.get('seed') == -1: task_parameters_for_worker['seed'] = np.random.randint(0, 2**32 - 1)
 
         print(f"Starting task {current_task_id} (Prompt: {task_parameters_for_worker.get('prompt', '')[:30]}...).")
         current_task_obj["status"] = "processing"
@@ -345,10 +356,10 @@ def process_task_queue_main_loop(state_dict_gr_state):
         worker_args = {
             **task_parameters_for_worker,
             'task_id': current_task_id, 'output_queue_ref': actual_output_queue, 'abort_event': shared_state.abort_event,
-            **shared_state.models # Unpack all models and flags
+            **shared_state.models
         }
         async_run(worker, **worker_args)
-        
+
         last_known_output_filename = state_dict_gr_state.get("last_completed_video_path", None)
         task_completed_successfully = False
         while True:

@@ -55,7 +55,7 @@ def load_settings_from_file(filepath, return_updates=True):
     except Exception as e:
         gr.Warning(f"Could not load workspace from {filepath}: {e}")
         loaded_settings = {}
-    
+
     final_settings = {**default_values, **loaded_settings}
     output_values = [final_settings.get(key, default_values.get(key)) for key in shared_state.ALL_TASK_UI_KEYS]
 
@@ -70,8 +70,41 @@ def load_settings_from_file(filepath, return_updates=True):
                 output_values[i] = bool(output_values[i])
         except (ValueError, TypeError):
             output_values[i] = default_values.get(key)
-            
+
     return [gr.update(value=v) for v in output_values] if return_updates else output_values
+
+# --- NEW FUNCTION FOR INITIAL OUTPUT FOLDER LOADING ---
+def get_initial_output_folder_from_settings():
+    """
+    Attempts to load the 'output_folder_ui' value from UNLOAD_SAVE_FILENAME or SETTINGS_FILENAME.
+    If not found or an error occurs, returns the module's default outputs_folder.
+    Expands user home directory paths (e.g., '~') if present.
+    """
+    # Use the module-level outputs_folder as the fallback default
+    default_output_folder_path = outputs_folder
+
+    # Prioritize the temporary unload save file, then the default settings file
+    filename_to_check = None
+    if os.path.exists(UNLOAD_SAVE_FILENAME):
+        filename_to_check = UNLOAD_SAVE_FILENAME
+    elif os.path.exists(SETTINGS_FILENAME):
+        filename_to_check = SETTINGS_FILENAME
+
+    if filename_to_check:
+        try:
+            with open(filename_to_check, 'r', encoding='utf-8') as f:
+                settings = json.load(f)
+            # If 'output_folder_ui' exists in the loaded settings, use it
+            if 'output_folder_ui' in settings:
+                # Expand user path (e.g., '~/.goan/outputs/') to its absolute form
+                return os.path.expanduser(settings['output_folder_ui'])
+        except Exception as e:
+            # Log a warning if loading fails, but proceed with default
+            print(f"Warning: Could not load 'output_folder_ui' from {filename_to_check} for initial path setup: {e}")
+            traceback.print_exc() # Print full traceback for deeper debugging if needed
+
+    # If no file found, or loading failed, or key not present, return the module's default
+    return default_output_folder_path
 
 # --- UI Handler Functions ---
 
@@ -107,16 +140,16 @@ def save_ui_and_image_for_refresh(*args_from_ui_controls_tuple):
         try:
             creative_params = {k: full_params_map.get(k) for k in shared_state.CREATIVE_PARAM_KEYS}
             pil_image = metadata_manager.write_image_metadata(pil_image, creative_params)
-            
+
             # Use the output folder path from the UI settings
             output_folder_path = full_params_map.get('output_folder_ui', outputs_folder)
             refresh_image_path = os.path.join(output_folder_path, REFRESH_IMAGE_FILENAME)
-            
+
             pil_image.save(refresh_image_path)
             settings_to_save["refresh_image_path"] = refresh_image_path
         except Exception as e:
             gr.Warning(f"Could not save refresh image: {e}")
-            
+
     # Save all settings to the unload file
     save_settings_to_file(UNLOAD_SAVE_FILENAME, *settings_to_save.values())
 
@@ -135,7 +168,7 @@ def load_workspace_on_start():
     """
     image_path_to_load = None
     settings_file = None
-    
+
     if os.path.exists(UNLOAD_SAVE_FILENAME):
         settings_file = UNLOAD_SAVE_FILENAME
         try:
