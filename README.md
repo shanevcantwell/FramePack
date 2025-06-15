@@ -1,5 +1,3 @@
-(Note: very brittle, needs state tuning, save&refresh still isn't managing to re-connect to service's state)
-
 # goan: A Power-User UI for FramePack
 
 Welcome to `goan`, an enhanced user interface designed for creative professionals and power users of FramePack. This project builds upon the brilliant FramePack video generation engine created by lllyasviel (of Fooocus and the Stable Diffusion Forge fork of A1111), exposing useful controls to reach further into FramePack's functionality through a robust and intuitive interface.
@@ -12,11 +10,14 @@ The base FramePack provides a powerful core model. `goan` extends it with a suit
 
 The features in `goan` are designed to directly support two important aspects for any serious use of FramePack: deep control over the diffusion process and recovery handling for long-running jobs.
 
+* **Uninterrupted Sessions & True Resilience:** Long-running jobs are the norm for video generation, and nothing is more frustrating than a UI disconnect or a browser crash wiping out hours of progress. `goan` is architected specifically to combat this fragility, a common pain point in many Gradio-based UIs.
+    * **Backend-Driven State:** The entire state of your session—the task queue, processing status, and live updates—is managed persistently on the backend. This means your job keeps running safely on the server, completely independent of the browser tab's status. Whether the tab is minimized, the screen is locked, or the connection is temporarily lost, your progress is secure.
+    * **Intelligent Session Re-attachment:** If your browser tab becomes disconnected for any reason, `goan`'s UI is designed to intelligently and automatically reconnect to the active backend process upon being re-focused. It finds the existing session and its live update stream, allowing the UI to seamlessly catch up to the real-time status of your render queue. This completely mitigates the dreaded "Error" boxes that plague typical Gradio interfaces during long sessions.
+    * **Robust Task Queue & Crash Recovery:** Beyond network stability, the entire task queue is automatically saved to disk. If there's a system crash or you need to restart, you can simply relaunch `goan`, and your queue will be right where you left it, ready to continue processing. No more lost work.
+
 * **Limit MP4 Preview Generation:** The base FramePack functionality writes a VAE-decoded `.mp4` preview for every single segment. This creates a tremendous amount of potentially unneeded compute, causing video generation to take much longer than necessary. `goan` introduces the ability to restrict these previews to only the segments you care about, using a combination of a periodic slider and a comma-separated list of individual segments to dramatically speed up your workflow.
 
 * **Advanced Diffusion Controls:** The base FramePack is a unique approach to video generation. `goan` exposes advanced controls like **Variable CFG**, which allows you to change the prompt adherence over the course of the video. This can be used to correct for a tendency for FramePack to "burn in" or oversaturate the final video as total length increases, giving you greater artistic control.
-
-* **Reliability and Crash Recovery:** We all know the pain of a multi-hour render crashing near the end. `goan` is built to mitigate this. Through its **Task Queue** and **Session Persistence**, your entire batch of jobs is saved automatically. If there's a crash or you need to restart, you can simply relaunch `goan`, and your queue will be right where you left it, ready to continue processing. No more lost work.
 
 * **Effortless "Recipe" Sharing:** `goan`'s **Drop-in Parameter Loading** allows you to save all creative settings directly into a generated PNG. Share the image, and anyone using `goan` can drop it into their UI to instantly load your exact "recipe," making collaboration and experimentation simple and repeatable.
 
