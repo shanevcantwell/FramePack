@@ -134,6 +134,10 @@ def worker(
     original_fp32_setting = transformer.high_quality_fp32_output_for_inference
     transformer.high_quality_fp32_output_for_inference = use_fp32_transformer_output
 
+    # Initialize history_latents_for_abort here to ensure it's always defined
+    # It will be overwritten within the loop if generation proceeds
+    history_latents_for_abort = None # Added: Initialize history_latents_for_abort to None
+
     try:
         if not isinstance(input_image, np.ndarray):
             raise ValueError(f"Task {task_id}: input_image is not a NumPy array.")
