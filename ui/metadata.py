@@ -33,56 +33,52 @@ def write_image_metadata(pil_image: Image.Image, params_dict: dict) -> Image.Ima
     """Creates a PngInfo object with the given parameters and attaches it to the image."""
     metadata = PngInfo()
     metadata.add_text("parameters", json.dumps(params_dict))
-    pil_image.info = metadata # The .info attribute is the correct place to assign the PngInfo object
+    pil_image.info = metadata
     return pil_image
 
-# --- UI Handler Functions (Moved from demo_gradio_svc.py) ---
+# --- UI Handler Functions ---
 
-def handle_image_upload_for_metadata(gallery_pil_list):
+def open_and_check_metadata(temp_file):
     """
-    Checks an uploaded image for metadata and shows a confirmation modal if found.
-    This function is triggered by the 'upload' event of the image gallery.
+    Opens a temporary file object, converts to PIL, checks for metadata, 
+    and returns the PIL image, prompt, and full metadata dict.
     """
-    if not gallery_pil_list:
-        return gr.update(visible=False)
+    if not temp_file:
+        return None, "", {}
     
-    # The gallery component returns a list of (image, name) tuples.
-    pil_image = gallery_pil_list[0][0] if isinstance(gallery_pil_list[0], tuple) else gallery_pil_list[0]
-    
-    if isinstance(pil_image, Image.Image):
+    try:
+        pil_image = Image.open(temp_file.name)
         extracted_metadata = extract_metadata_from_pil_image(pil_image)
-        # Show the modal only if metadata exists and contains relevant keys.
+        prompt_preview = ""
+        
         if extracted_metadata and any(key in extracted_metadata for key in shared_state.CREATIVE_PARAM_KEYS):
-            return gr.update(visible=True)
+            prompt_preview = extracted_metadata.get('prompt', '')
             
-    return gr.update(visible=False)
+        return pil_image, prompt_preview, extracted_metadata
+    except Exception as e:
+        print(f"Error processing uploaded file: {e}")
+        return None, "", {}
 
-def ui_load_params_from_image_metadata(gallery_data_list):
+def ui_load_params_from_image_metadata(extracted_metadata):
     """
-    Loads ONLY the creative parameters from image metadata and returns UI updates.
+    Loads ONLY the creative parameters from a metadata dictionary and returns UI updates.
     """
     updates = [gr.update()] * len(shared_state.CREATIVE_PARAM_KEYS)
-    if not gallery_data_list:
-        return updates
-        
-    pil_image = gallery_data_list[0][0] if isinstance(gallery_data_list[0], tuple) else gallery_data_list[0]
-    extracted_metadata = extract_metadata_from_pil_image(pil_image)
-    
     if not extracted_metadata:
-        gr.Info("No parameters found in image.")
+        gr.Info("No parameters found to apply.")
         return updates
         
     gr.Info(f"Applying creative settings from image...")
     for i, key in enumerate(shared_state.CREATIVE_PARAM_KEYS):
         if key in extracted_metadata:
-            # Return a Gradio update object for each changed parameter.
             updates[i] = gr.update(value=extracted_metadata[key])
             
     return updates
 
-def apply_and_hide_modal(gallery_data_list):
+# CHANGED: New helper function to construct a params dict from the UI values.
+def create_params_from_ui(*ui_values):
     """
-    A wrapper function that applies the metadata and then hides the confirmation modal.
+    Takes all creative UI values as *args and returns a dictionary
+    mapping the UI keys to their current values.
     """
-    # The first output hides the modal, the rest are the parameter updates.
-    return [gr.update(visible=False)] + ui_load_params_from_image_metadata(gallery_data_list)
+    return dict(zip(shared_state.CREATIVE_PARAM_KEYS, ui_values))

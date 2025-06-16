@@ -3,37 +3,59 @@ import traceback
 import einops
 import numpy as np
 import os
-import threading
 import json
 from PIL import Image
 from PIL.PngImagePlugin import PngInfo
 
-from diffusers_helper.hunyuan import (
-    encode_prompt_conds,
-    vae_decode,
-    vae_encode,
-    vae_decode_fake,
-)
-from diffusers_helper.utils import (
-    save_bcthw_as_mp4,
-    crop_or_pad_yield_mask,
-    soft_append_bcthw,
-    resize_and_center_crop,
-    generate_timestamp,
-)
+# Local application imports
+from diffusers_helper.hunyuan import encode_prompt_conds, vae_decode, vae_encode, vae_decode_fake
+from diffusers_helper.utils import save_bcthw_as_mp4, crop_or_pad_yield_mask, soft_append_bcthw, resize_and_center_crop, generate_timestamp
 from diffusers_helper.pipelines.k_diffusion_hunyuan import sample_hunyuan
-from diffusers_helper.memory import (
-    unload_complete_models,
-    load_model_as_complete,
-    move_model_to_device_with_memory_preservation,
-    offload_model_from_device_for_memory_preservation,
-    fake_diffusers_current_device,
-    gpu,
-)
+from diffusers_helper.memory import unload_complete_models, load_model_as_complete, move_model_to_device_with_memory_preservation, offload_model_from_device_for_memory_preservation, fake_diffusers_current_device, gpu
 from diffusers_helper.clip_vision import hf_clip_vision_encode
 from diffusers_helper.bucket_tools import find_nearest_bucket
 from diffusers_helper.gradio.progress_bar import make_progress_bar_html
 from ui import metadata as metadata_manager
+from ui import shared_state
+
+
+def _save_final_preview(history_pixels, vae, job_id, task_id, outputs_folder, crf, output_queue_ref, high_vram):
+    """
+    Helper function to decode and save the final video preview during a graceful abort.
+    This logic is refactored to be callable from the end of the worker.
+    """
+    if history_pixels is None:
+        print(f"Task {task_id}: No pixels generated, cannot save final preview.")
+        return None
+
+    # Before starting the expensive decode, check for a hard abort.
+    if shared_state.abort_state['level'] >= 2:
+        print(f"Task {task_id}: Hard abort detected before final VAE decode.")
+        raise InterruptedError("Hard abort during final save.")
+
+    print(f"Task {task_id}: Decoding final latents for graceful abort preview...")
+    output_queue_ref.push(('progress', (task_id, None, "Decoding final latents for preview...", make_progress_bar_html(100, "Decoding..."))))
+
+    if not high_vram:
+        load_model_as_complete(vae, target_device=gpu)
+
+    # This is a blocking, expensive operation.
+    pixels = vae_decode(history_pixels, vae).cpu()
+
+    if not high_vram:
+        unload_complete_models(vae)
+
+    if shared_state.abort_state['level'] >= 2:
+        print(f"Task {task_id}: Hard abort detected before final MP4 write.")
+        raise InterruptedError("Hard abort during final save.")
+
+    print(f"Task {task_id}: Writing final MP4 preview...")
+    output_queue_ref.push(('progress', (task_id, None, "Writing final MP4 preview...", make_progress_bar_html(100, "Writing MP4..."))))
+
+    final_video_path = os.path.join(outputs_folder, f'{job_id}_aborted_preview.mp4')
+    save_bcthw_as_mp4(pixels, final_video_path, fps=30, crf=crf)
+    print(f"Task {task_id}: Saved graceful abort preview to {final_video_path}")
+    return final_video_path
 
 
 @torch.no_grad()
@@ -72,12 +94,8 @@ def worker(
     image_encoder,
     transformer,
     high_vram,
-    # --- Control Flow ---
-    abort_event: threading.Event = None,
 ):
-    outputs_folder = (
-        os.path.expanduser(output_folder) if output_folder else "./outputs/"
-    )
+    outputs_folder = os.path.expanduser(output_folder) if output_folder else "./outputs/" # user: maybe this should be grabbing from defaults not hard coded
     os.makedirs(outputs_folder, exist_ok=True)
 
     # --- Gemini: do not touch - "secret sauce"
@@ -100,52 +118,33 @@ def worker(
     parsed_segments_to_decode_set = set()
     if segments_to_decode_csv:
         try:
-            parsed_segments_to_decode_set = {
-                int(s.strip()) for s in segments_to_decode_csv.split(",") if s.strip()
-            }
+            parsed_segments_to_decode_set = {int(s.strip()) for s in segments_to_decode_csv.split(",") if s.strip()}
         except ValueError:
-            print(
-                f"Task {task_id}: Warning - Could not parse 'Segments to Decode CSV': \"{segments_to_decode_csv}\"."
-            )
+            print(f"Task {task_id}: Warning - Could not parse 'Segments to Decode CSV': \"{segments_to_decode_csv}\".")
+
     final_output_filename = None
     success = False
+
     initial_gs_from_ui = gs
     gs_final_value_for_schedule = (
         gs_final if gs_final is not None else initial_gs_from_ui
     )
+
+    graceful_abort_preview_path = None
     original_fp32_setting = transformer.high_quality_fp32_output_for_inference
     transformer.high_quality_fp32_output_for_inference = use_fp32_transformer_output
-    print(
-        f"Task {task_id}: transformer.high_quality_fp32_output_for_inference set to {use_fp32_transformer_output}"
-    )
 
     try:
         if not isinstance(input_image, np.ndarray):
             raise ValueError(f"Task {task_id}: input_image is not a NumPy array.")
-
-        output_queue_ref.push(
-            (
-                "progress",
-                (
-                    task_id,
-                    None,
-                    f"Total Segments: {total_latent_sections}",
-                    make_progress_bar_html(0, "Image processing ..."),
-                ),
-            )
-        )
+        output_queue_ref.push(('progress', (task_id, None, f'Total Segments: {total_latent_sections}', make_progress_bar_html(0, "Image processing ..."))))
         if input_image.shape[-1] == 4:
             pil_img = Image.fromarray(input_image)
             input_image = np.array(pil_img.convert("RGB"))
         H, W, C = input_image.shape
-        if C != 3:
-            raise ValueError(
-                f"Task {task_id}: Input image must be RGB, found {C} channels."
-            )
+        if C != 3: raise ValueError(f"Task {task_id}: Input image must be RGB, found {C} channels.")
         height, width = find_nearest_bucket(H, W, resolution=640)
-        input_image_np = resize_and_center_crop(
-            input_image, target_width=width, target_height=height
-        )
+        input_image_np = resize_and_center_crop(input_image, target_width=width, target_height=height)
 
         metadata_obj = PngInfo()
         params_to_save_in_metadata = {
@@ -276,7 +275,6 @@ def worker(
         )
         rnd = torch.Generator(device="cpu").manual_seed(int(seed))
         num_frames = latent_window_size * 4 - 3
-        # overlapped_frames = num_frames
 
         history_latents = torch.zeros(
             size=(1, 16, 1 + 2 + 16, height // 8, width // 8),
@@ -289,17 +287,10 @@ def worker(
         if total_latent_sections > 4:
             latent_paddings = [3] + [2] * (total_latent_sections - 3) + [1, 0]
 
-        # for latent_padding_iteration, latent_padding in enumerate(latent_paddings):
-        #     if abort_event and abort_event.is_set(): raise KeyboardInterrupt("Abort signal received.")
-        #     is_last_section = (latent_padding == 0)
-        #     latent_padding_size = latent_padding * latent_window_size
-        #     print(f'Task {task_id}: Seg {latent_padding_iteration + 1}/{total_latent_sections} (lp_val={latent_padding}), last_loop_seg={is_last_section}')
-
-        # ^ our code | v Flash code
-
         for latent_padding_iteration, latent_padding in enumerate(latent_paddings):
-            if abort_event and abort_event.is_set():
-                raise KeyboardInterrupt("Abort signal received.")
+            if shared_state.abort_state['level'] >= 1:
+                print(f"Task {task_id}: Graceful abort detected. Breaking generation loop to save final preview.")
+                break # Exit the loop cleanly
             is_last_section = latent_padding == 0
             latent_padding_size = latent_padding * latent_window_size
             # Added for consistent 1-indexed segment number for loop segments
@@ -329,12 +320,7 @@ def worker(
             clean_latent_indices = torch.cat(
                 [clean_latent_indices_pre, clean_latent_indices_post], dim=1
             )
-            # current_history_depth_for_clean_split = history_latents.shape[2]; needed_depth_for_clean_split = 1 + 2 + 16
-            # history_latents_for_clean_split = history_latents
-            # if current_history_depth_for_clean_split < needed_depth_for_clean_split:
-            #     padding_needed = needed_depth_for_clean_split - current_history_depth_for_clean_split
-            #     pad_tensor = torch.zeros(history_latents.shape[0], history_latents.shape[1], padding_needed, history_latents.shape[3], history_latents.shape[4], dtype=history_latents.dtype, device=history_latents.device)
-            #     history_latents_for_clean_split = torch.cat((history_latents, pad_tensor), dim=2)
+
             clean_latents_post, clean_latents_2x, clean_latents_4x = history_latents[
                 :, :, : 1 + 2 + 16, :, :
             ].split([1, 2, 16], dim=2)
@@ -352,7 +338,7 @@ def worker(
             )
 
             def callback_diffusion_step(d):
-                if abort_event and abort_event.is_set():
+                if shared_state.abort_state['level'] >= 2:
                     raise KeyboardInterrupt("Abort signal received during sampling.")
                 current_diffusion_step = d["i"] + 1
                 is_first_step = current_diffusion_step == 1
@@ -376,20 +362,12 @@ def worker(
                     preview_img_np, "b c t h w -> (b h) (t w) c"
                 )
 
-                # percentage = int(100.0 * current_diffusion_step / steps)
-                # hint = f'Segment {latent_padding_iteration + 1}, Sampling {current_diffusion_step}/{steps}'
-                # current_video_frames_count = history_pixels.shape[2] if history_pixels is not None else 0
-                # desc = f'Task {task_id}: Vid Frames: {current_video_frames_count}, Len: {current_video_frames_count / 30 :.2f}s. Seg {latent_padding_iteration + 1}/{total_latent_sections}. Extending...'
-                # output_queue_ref.push(('progress', (task_id, preview_img_np, desc, make_progress_bar_html(percentage, hint))))
-
-                # ^ our code | v Flash code
-
                 percentage = int(100.0 * current_diffusion_step / steps)
-                hint = f"Segment {current_loop_segment_number}, Sampling {current_diffusion_step}/{steps}"  # Updated hint
+                hint = f"Segment {current_loop_segment_number}, Sampling {current_diffusion_step}/{steps}"
                 current_video_frames_count = (
                     history_pixels.shape[2] if history_pixels is not None else 0
                 )
-                desc = f"Task {task_id}: Vid Frames: {current_video_frames_count}, Len: {current_video_frames_count / 30 :.2f}s. Seg {current_loop_segment_number}/{total_latent_sections}. Extending..."  # Updated desc
+                desc = f"Task {task_id}: Vid Frames: {current_video_frames_count}, Len: {current_video_frames_count / 30 :.2f}s. Seg {current_loop_segment_number}/{total_latent_sections}. Extending..."
                 output_queue_ref.push(
                     (
                         "progress",
@@ -495,69 +473,25 @@ def worker(
             current_video_frame_count = history_pixels.shape[2]
 
             # --- Gemini start again
-            # # Skip writing preview mp4 for this segment logic
-            # should_save_mp4_this_iteration = False
-            # current_segment_1_indexed = latent_padding_iteration # + 1
-            # if (latent_padding_iteration == 0) or is_last_section or (parsed_segments_to_decode_set and current_segment_1_indexed in parsed_segments_to_decode_set):
-            #     should_save_mp4_this_iteration = True
-            # if should_save_mp4_this_iteration:
-            #     segment_mp4_filename = os.path.join(outputs_folder, f'{job_id}_segment_{latent_padding_iteration}_frames_{current_video_frame_count}.mp4')
-            #     save_bcthw_as_mp4(history_pixels, segment_mp4_filename, fps=30, crf=mp4_crf)
-            #     final_output_filename = segment_mp4_filename
-            #     print(f"Task {task_id}: SAVED MP4 for segment {latent_padding_iteration} to {segment_mp4_filename}. Total video frames: {current_video_frame_count}")
-            #     output_queue_ref.push(('file', (task_id, segment_mp4_filename, f"Segment {latent_padding_iteration} MP4 saved ({current_video_frame_count} frames)")))
-            # else:
-            #     print(f"Task {task_id}: SKIPPED MP4 save for intermediate segment {current_segment_1_indexed}.")
-
-            # if is_last_section: success = True; break
-
-            # --- Gemini start again
-
-            # ^ original code | v Flash code
-
-            # # Skip writing preview mp4 for this segment logic
-            # should_save_mp4_this_iteration = False
-            # # Use latent_padding_iteration directly here, as it's the 0-indexed loop counter
-            # current_segment_index = latent_padding_iteration
-
-            # # Condition 1: Always save the first segment (index 0)
-            # if current_segment_index == 0:
-            #     should_save_mp4_this_iteration = True
-            # # Condition 2: Always save the last segment
-            # elif is_last_section:
-            #     should_save_mp4_this_iteration = True
-            # # Condition 3: Save if the current segment index is in the parsed set
-            # elif parsed_segments_to_decode_set and (current_segment_index + 1) in parsed_segments_to_decode_set:
-            #     # Add 1 here if segments_to_decode_csv assumes 1-based indexing for user input
-            #     should_save_mp4_this_iteration = True
-            # # Condition 4: Save based on preview_frequency, if enabled (preview_frequency > 0)
-            # elif preview_frequency > 0 and current_segment_index % preview_frequency == 0:
-            #     should_save_mp4_this_iteration = True
-
-            # if should_save_mp4_this_iteration:
-            #     segment_mp4_filename = os.path.join(outputs_folder, f'{job_id}_segment_{latent_padding_iteration}_frames_{current_video_frame_count}.mp4')
-            #     save_bcthw_as_mp4(history_pixels, segment_mp4_filename, fps=30, crf=mp4_crf)
-            #     final_output_filename = segment_mp4_filename
-            #     print(f"Task {task_id}: SAVED MP4 for segment {latent_padding_iteration} to {segment_mp4_filename}. Total video frames: {current_video_frame_count}")
-            #     output_queue_ref.push(('file', (task_id, segment_mp4_filename, f"Segment {latent_padding_iteration} MP4 saved ({current_video_frame_count} frames)")))
-            # else:
-            #     print(f"Task {task_id}: SKIPPED MP4 save for intermediate segment {current_segment_index}.")
-
-            # Determine if we should save an intermediate MP4 for this loop segment
+            # --- Unified and Corrected MP4 Saving Logic ---
             should_save_mp4_this_iteration = False
 
-            # Condition 1: Always save the last segment of the loop
-            if is_last_section:
+            # Condition 1: Always save the very first segment (iteration 0)
+            if latent_padding_iteration == 0:
                 should_save_mp4_this_iteration = True
-            # Condition 2: Save if the current loop segment number is explicitly in the parsed set
+            # Condition 2: Always save the last segment
+            elif is_last_section:
+                should_save_mp4_this_iteration = True
+            # Condition 3: Save if the user specified this segment number (1-indexed)
             elif (
                 parsed_segments_to_decode_set
                 and current_loop_segment_number in parsed_segments_to_decode_set
             ):
                 should_save_mp4_this_iteration = True
-            # Condition 3: Save based on preview_frequency, if enabled (preview_frequency > 0)
-            elif preview_frequency > 0 and (
-                current_loop_segment_number % preview_frequency == 0
+            # Condition 4: Save based on the periodic preview_frequency setting
+            elif (
+                preview_frequency > 0
+                and (current_loop_segment_number % preview_frequency == 0)
             ):
                 should_save_mp4_this_iteration = True
 
@@ -565,14 +499,14 @@ def worker(
                 segment_mp4_filename = os.path.join(
                     outputs_folder,
                     f"{job_id}_segment_{current_loop_segment_number}_frames_{current_video_frame_count}.mp4",
-                )  # Updated filename to use 1-indexed segment
+                )
                 save_bcthw_as_mp4(
                     history_pixels, segment_mp4_filename, fps=30, crf=mp4_crf
                 )
                 final_output_filename = segment_mp4_filename
                 print(
                     f"Task {task_id}: SAVED MP4 for segment {current_loop_segment_number} to {segment_mp4_filename}. Total video frames: {current_video_frame_count}"
-                )  # Updated log to use 1-indexed segment
+                )
                 output_queue_ref.push(
                     (
                         "file",
@@ -582,34 +516,42 @@ def worker(
                             f"Segment {current_loop_segment_number} MP4 saved ({current_video_frame_count} frames)",
                         ),
                     )
-                )  # Updated output queue message to use 1-indexed segment
+                )
             else:
                 print(
                     f"Task {task_id}: SKIPPED MP4 save for intermediate segment {current_loop_segment_number}."
-                )  # Updated log to use 1-indexed segment
+                )
+            history_latents_for_abort = real_history_latents.clone()
 
-    except KeyboardInterrupt:
-        print(f"Worker task {task_id} caught KeyboardInterrupt (likely abort signal).")
-        output_queue_ref.push(("aborted", task_id))
+        # --- Post-loop logic ---
+        # If the loop finished because of a graceful abort, save the preview
+        if shared_state.abort_state['level'] == 1:
+            graceful_abort_preview_path = _save_final_preview(
+                history_latents_for_abort, vae, job_id, task_id, outputs_folder, mp4_crf, output_queue_ref, high_vram
+            )
+            # A graceful abort is not a full success, but we provide the preview path
+            success = False
+            final_output_filename = graceful_abort_preview_path
+            output_queue_ref.push(('aborted', task_id))
+
+        # This else block runs only if the loop completed naturally
+        else:
+            success = True
+            # The final filename was already set by the last iteration of the loop
+
+    except (InterruptedError, KeyboardInterrupt) as e:
+        print(f"Worker task {task_id} caught explicit abort signal: {e}")
+        output_queue_ref.push(('aborted', task_id))
         success = False
+        final_output_filename = graceful_abort_preview_path
     except Exception as e:
         print(f"Error in worker task {task_id}: {e}")
         traceback.print_exc()
-        output_queue_ref.push(("error", (task_id, str(e))))
+        output_queue_ref.push(('error', (task_id, str(e))))
         success = False
     finally:
+        # This block now correctly reports the outcome
         transformer.high_quality_fp32_output_for_inference = original_fp32_setting
-        print(
-            f"Task {task_id}: Restored transformer.high_quality_fp32_output_for_inference to {original_fp32_setting}"
-        )
         if not high_vram:
-            unload_complete_models(
-                text_encoder, text_encoder_2, image_encoder, vae, transformer
-            )
-        if final_output_filename and not os.path.dirname(
-            final_output_filename
-        ) == os.path.abspath(outputs_folder):
-            final_output_filename = os.path.join(
-                outputs_folder, os.path.basename(final_output_filename)
-            )
-        output_queue_ref.push(("end", (task_id, success, final_output_filename)))
+            unload_complete_models(text_encoder, text_encoder_2, image_encoder, vae, transformer)
+        output_queue_ref.push(('end', (task_id, success, final_output_filename)))
