@@ -347,19 +347,14 @@ def worker(
             )
 
             def callback_diffusion_step(d):
-                # CHANGED: This check handles a hard abort (level 2). A double click
-                # will raise an exception here, immediately stopping the sampling process.
                 if shared_state.abort_state['level'] >= 2:
-                    raise KeyboardInterrupt("Hard abort signal received during sampling.")
+                    raise KeyboardInterrupt("Abort signal received during sampling.")
+                
+                # MODIFIED: Removed the conditional return to ensure the UI is updated on every step.
                 current_diffusion_step = d["i"] + 1
-                is_first_step = current_diffusion_step == 1
-                is_last_step = current_diffusion_step == steps
-                is_preview_step = preview_frequency > 0 and (
-                    current_diffusion_step % preview_frequency == 0
-                )
-                if not (is_first_step or is_last_step or is_preview_step):
-                    return
+
                 preview_latent = d["denoised"]
+                # ... (rest of the image processing) ...
                 preview_img_np = vae_decode_fake(preview_latent)
                 preview_img_np = (
                     (preview_img_np * 255.0)

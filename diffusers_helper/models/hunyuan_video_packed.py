@@ -106,159 +106,95 @@ def apply_rotary_emb_transposed(x, freqs_cis):
 
 
 def attn_varlen_func(q, k, v, cu_seqlens_q, cu_seqlens_kv, max_seqlen_q, max_seqlen_kv):
+    # --- Path for NON-VARIABLE length attention ---
     if cu_seqlens_q is None and cu_seqlens_kv is None and max_seqlen_q is None and max_seqlen_kv is None:
-        if sageattn is not None:
-            x = sageattn(q, k, v, tensor_layout='NHD')
-            return x
-
-        #if flash_attn_func is not None:
-        #    x = flash_attn_func(q, k, v)
-        #    return x
+        # MODIFIED: Commented out the sageattention block to bypass the Triton compilation error.
+        # if sageattn is not None:
+        #     q_fp16, k_fp16, v_fp16 = q.to(torch.float16), k.to(torch.float16), v.to(torch.float16)
+        #     x = sageattn(q_fp16, k_fp16, v_fp16, tensor_layout='NHD')
+        #     return x.to(q.dtype)
 
         if xformers_attn_func is not None:
-            # Cast to float16 before calling xformers as bf16 might not be supported
             q_fp16 = q.to(torch.float16)
             k_fp16 = k.to(torch.float16)
             v_fp16 = v.to(torch.float16)
             try:
                 x = xformers_attn_func(q_fp16, k_fp16, v_fp16)
-                x = x.to(q.dtype) # Cast back to original dtype
-                return x
+                return x.to(q.dtype)
             except NotImplementedError:
-                 # If xformers fails with float16, fall through to SDPA
                  print("xFormers failed with float16, falling back to SDPA.")
-                 pass # Let SDPA handle it
+                 pass
 
-        # Fallback to SDPA, ensure float16 or float32 as bfloat16 might not be supported natively on Turing
-        q_fallback = q.to(torch.float16) # Try float16 first for SDPA
+        # Fallback to SDPA
+        q_fallback = q.to(torch.float16)
         k_fallback = k.to(torch.float16)
         v_fallback = v.to(torch.float16)
         try:
-            # Use PyTorch's built-in SDPA
             x = torch.nn.functional.scaled_dot_product_attention(q_fallback.transpose(1, 2), k_fallback.transpose(1, 2), v_fallback.transpose(1, 2)).transpose(1, 2)
-            x = x.to(q.dtype) # Cast back to original dtype
-            return x
+            return x.to(q.dtype)
         except Exception as e_sdpa_fp16:
             print(f"SDPA failed with float16: {e_sdpa_fp16}. Trying float32.")
-            # If float16 fails for SDPA (less likely but possible), try float32
             q_fallback_fp32 = q.to(torch.float32)
             k_fallback_fp32 = k.to(torch.float32)
             v_fallback_fp32 = v.to(torch.float32)
             try:
                 x = torch.nn.functional.scaled_dot_product_attention(q_fallback_fp32.transpose(1, 2), k_fallback_fp32.transpose(1, 2), v_fallback_fp32.transpose(1, 2)).transpose(1, 2)
-                x = x.to(q.dtype) # Cast back to original dtype
-                return x
+                return x.to(q.dtype)
             except Exception as e_sdpa_fp32:
                  print(f"SDPA also failed with float32: {e_sdpa_fp32}. Raising original error.")
-                 raise e_sdpa_fp16 # Re-raise the float16 error if float32 also fails
+                 raise e_sdpa_fp16
 
+    # --- Path for VARIABLE length attention ---
     batch_size = q.shape[0]
-    # The view operations might need to happen *before* casting if cu_seqlens are involved
-    # Let's keep the original view logic for now
     q_orig_shape = q.shape
-    k_orig_shape = k.shape
-    v_orig_shape = v.shape
     q = q.view(q.shape[0] * q.shape[1], *q.shape[2:])
     k = k.view(k.shape[0] * k.shape[1], *k.shape[2:])
     v = v.view(v.shape[0] * v.shape[1], *v.shape[2:])
 
-    if sageattn_varlen is not None:
-        # Assuming sageattn handles dtypes correctly or needs its own casting
-        try:
-            x = sageattn_varlen(q, k, v, cu_seqlens_q, cu_seqlens_kv, max_seqlen_q, max_seqlen_kv)
-        except Exception as e_sage:
-            print(f"Sage Attn failed: {e_sage}. Falling back.")
-            # Fallback logic needed if sage fails
-            x = None # Placeholder
-    else:
-        x = None # Initialize x if sageattn is not used
-
-    #elif flash_attn_varlen_func is not None: # Commented out
-    #    x = flash_attn_varlen_func(q, k, v, cu_seqlens_q, cu_seqlens_kv, max_seqlen_q, max_seqlen_kv)
-
-    if x is None and xformers_attn_func is not None: # Check if sage failed or wasn't used, and xformers is available
-        # Cast to float16 before calling xformers for variable length
-        q_fp16 = q.to(torch.float16)
-        k_fp16 = k.to(torch.float16)
-        v_fp16 = v.to(torch.float16)
-        try:
-             # xFormers memory_efficient_attention does not directly support cu_seqlens.
-             # The original code used flash_attn_varlen_func for this.
-             # We might need to pad/unpad manually or use a different xFormers interface if one exists for varlen.
-             # For now, trying the standard call, which might be incorrect for packed sequences.
-            print("Warning: Calling standard xformers attention for variable length sequence. This might be incorrect. Padding/unpadding or a dedicated varlen function might be needed.")
-            x = xformers_attn_func(q_fp16, k_fp16, v_fp16) # This is likely incorrect for varlen!
-            x = x.to(q.dtype) # Cast back
-        except NotImplementedError:
-            print("xFormers (standard) failed for varlen with float16, falling back to SDPA.")
-            x = None # Mark xFormers as failed
-        except Exception as e_xformers_varlen:
-            print(f"xFormers (standard) encountered an error for varlen: {e_xformers_varlen}. Falling back to SDPA.")
-            x = None # Mark xFormers as failed
-
-
-    if x is None: # If sage/flash/xformers all failed or were unavailable for varlen
-        print("No specialized attention backend worked for varlen, falling back to basic SDPA (potentially incorrect for packed sequences).")
-        q_fallback = q.to(torch.float16) # Use float16 for fallback
+    x = None
+    # MODIFIED: Commented out the sageattention_varlen block.
+    # if sageattn_varlen is not None:
+    #     try:
+    #         q_fp16, k_fp16, v_fp16 = q.to(torch.float16), k.to(torch.float16), v.to(torch.float16)
+    #         x = sageattn_varlen(q_fp16, k_fp16, v_fp16, cu_seqlens_q, cu_seqlens_kv, max_seqlen_q, max_seqlen_kv)
+    #         x = x.to(q.dtype)
+    #     except Exception as e_sage:
+    #         print(f"Sage Attn (varlen) failed: {e_sage}. Falling back.")
+    #         x = None
+    
+    # The logic will now fall through to the manual SDPA loop if xformers isn't available or fails.
+    if x is None: # Fallback if sageattention fails or is not present
+        print("Sage Varlen not used or failed. Falling back to manual SDPA loop.")
+        q_fallback = q.to(torch.float16)
         k_fallback = k.to(torch.float16)
         v_fallback = v.to(torch.float16)
-        # Basic SDPA call - this does NOT respect cu_seqlens and will likely produce wrong results for packed attention.
-        # A correct implementation would require iterating through batches/sequences or finding a SDPA variant that handles cu_seqlens.
-        try:
-            x_list = []
-            current_idx_q = 0
-            current_idx_kv = 0
-            # Manually iterate based on cu_seqlens (this is slow and inefficient but more correct than a single SDPA call)
-            for i in range(batch_size):
-                 start_idx_q = cu_seqlens_q[2*i].item()
-                 end_idx_q = cu_seqlens_q[2*i+1].item()
-                 start_idx_kv = cu_seqlens_kv[2*i].item() # Assuming cu_seqlens_kv matches q structure here
-                 end_idx_kv = cu_seqlens_kv[2*i+1].item()
+        x_list = []
+        for i in range(batch_size):
+            start_idx_q, end_idx_q = cu_seqlens_q[2 * i].item(), cu_seqlens_q[2 * i + 1].item()
+            start_idx_kv, end_idx_kv = cu_seqlens_kv[2 * i].item(), cu_seqlens_kv[2 * i + 1].item()
+            
+            q_i = q_fallback[start_idx_q:end_idx_q].unsqueeze(0).transpose(1, 2)
+            k_i = k_fallback[start_idx_kv:end_idx_kv].unsqueeze(0).transpose(1, 2)
+            v_i = v_fallback[start_idx_kv:end_idx_kv].unsqueeze(0).transpose(1, 2)
+            
+            q_i, k_i, v_i = q_i.view(1, -1, q_orig_shape[-2], q_orig_shape[-1]).transpose(1, 2), k_i.view(1, -1, q_orig_shape[-2], q_orig_shape[-1]).transpose(1, 2), v_i.view(1, -1, q_orig_shape[-2], q_orig_shape[-1]).transpose(1, 2)
+            
+            out_i = torch.nn.functional.scaled_dot_product_attention(q_i, k_i, v_i).transpose(1, 2)
+            out_i = out_i.reshape(1, -1, q_orig_shape[-2] * q_orig_shape[-1])
+            x_list.append(out_i.squeeze(0))
 
-                 q_i = q_fallback[start_idx_q:end_idx_q].unsqueeze(0).transpose(1, 2) # Shape: (1, num_heads, seq_len_q, head_dim) -> (1, seq_len_q, num_heads, head_dim) -> (1, num_heads, seq_len_q, head_dim) for SDPA
-                 k_i = k_fallback[start_idx_kv:end_idx_kv].unsqueeze(0).transpose(1, 2)
-                 v_i = v_fallback[start_idx_kv:end_idx_kv].unsqueeze(0).transpose(1, 2)
+        padded_x_list = []
+        for x_i in x_list:
+            pad_len = max_seqlen_q - x_i.shape[0]
+            if pad_len > 0:
+                padded_x_list.append(torch.nn.functional.pad(x_i, (0, 0, 0, pad_len)))
+            else:
+                padded_x_list.append(x_i)
+        
+        x = torch.stack(padded_x_list, dim=0)
+        x = x.to(q.dtype)
 
-                 # Reshape for SDPA: (batch=1, seq_len, num_heads, head_dim) -> (batch=1, num_heads, seq_len, head_dim)
-                 q_i = q_i.view(1, -1, q_orig_shape[-2], q_orig_shape[-1]).transpose(1, 2)
-                 k_i = k_i.view(1, -1, k_orig_shape[-2], k_orig_shape[-1]).transpose(1, 2)
-                 v_i = v_i.view(1, -1, v_orig_shape[-2], v_orig_shape[-1]).transpose(1, 2)
-
-
-                 out_i = torch.nn.functional.scaled_dot_product_attention(q_i, k_i, v_i).transpose(1, 2) # Output: (1, num_heads, seq_len_q, head_dim) -> (1, seq_len_q, num_heads, head_dim)
-                 # Reshape back to match original 'flattened' structure before view
-                 out_i = out_i.reshape(1, -1, q_orig_shape[-2] * q_orig_shape[-1]) # (1, seq_len_q, hidden_dim)
-                 x_list.append(out_i.squeeze(0))
-
-
-            # Pad shorter sequences to max_seqlen_q before cat
-            padded_x_list = []
-            for x_i in x_list:
-                pad_len = max_seqlen_q - x_i.shape[0]
-                if pad_len > 0:
-                     # Pad with zeros, adjust padding dims if needed
-                    padded_x_i = torch.nn.functional.pad(x_i, (0, 0, 0, pad_len)) # Pads the sequence length dim (dim 0)
-                    padded_x_list.append(padded_x_i)
-                else:
-                    padded_x_list.append(x_i)
-
-            x = torch.stack(padded_x_list, dim=0) # Shape: (batch_size, max_seqlen_q, hidden_dim)
-            x = x.to(q.dtype) # Cast back
-
-        except Exception as e_sdpa_varlen:
-            print(f"Manual SDPA loop for varlen failed: {e_sdpa_varlen}")
-            # If even the manual loop fails, we are stuck. Raise error.
-            raise NotImplementedError("Could not execute attention with any backend for variable sequence lengths.")
-
-
-    # Reshape x back to (batch_size, max_seqlen_q, num_heads, head_dim) before final view?
-    # The SDPA fallback already outputs in (batch_size, seq_len, hidden_dim) format which matches the expected format before the final view.
-    # Ensure xformers/sage output is also in this format if they were used. (Assuming they are)
-
-    # Final reshape expects input shape (batch_size, max_seqlen_q, hidden_dim)
-    x = x.view(batch_size, max_seqlen_q, *q_orig_shape[2:]) # Use original shape's head dim etc.
-    return x
-
+    return x.view(batch_size, max_seqlen_q, *q_orig_shape[2:])
 
 class HunyuanAttnProcessorFlashAttnDouble:
     def __call__(self, attn, hidden_states, encoder_hidden_states, attention_mask, image_rotary_emb):
