@@ -103,6 +103,8 @@ def create_ui():
                     components['latent_window_size_ui'] = gr.Slider(label="Latent Window Size", minimum=1, maximum=33, value=9, step=1, visible=False)
                     components['output_folder_ui_ctrl'] = gr.Textbox(label="Output Folder", value=workspace_manager.outputs_folder)
                     components['save_as_default_button'] = gr.Button("Save as Default", variant="secondary")
+                    components['relaunch_notification_md'] = gr.Markdown("ℹ️ **Restart required** for new output path to take effect.", visible=False)
+                    components['relaunch_button'] = gr.Button("Save Current State & Relaunch", variant="primary", visible=False)
                     components['reset_ui_button'] = gr.Button("Save & Refresh UI", variant="secondary")
 
                 with gr.Row():

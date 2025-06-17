@@ -122,10 +122,39 @@ def save_workspace(*ui_values_tuple):
     if file_path: save_settings_to_file(file_path, *ui_values_tuple)
     else: gr.Warning("Save cancelled.")
 
+# def save_as_default_workspace(*ui_values_tuple):
+#     """Saves the current UI settings as the default startup configuration."""
+#     gr.Info(f"Saving current settings as default to {SETTINGS_FILENAME}")
+#     save_settings_to_file(SETTINGS_FILENAME, *ui_values_tuple)
+
 def save_as_default_workspace(*ui_values_tuple):
-    """Saves the current UI settings as the default startup configuration."""
-    gr.Info(f"Saving current settings as default to {SETTINGS_FILENAME}")
-    save_settings_to_file(SETTINGS_FILENAME, *ui_values_tuple)
+    """
+    Saves the current UI settings as the default startup configuration and
+    returns updates to show the relaunch notification.
+    """
+    settings_to_save = dict(zip(shared_state.ALL_TASK_UI_KEYS, ui_values_tuple))
+    new_output_folder = settings_to_save.get('output_folder_ui_ctrl')
+
+    # Load existing settings to append the new allowed path.
+    try:
+        with open(SETTINGS_FILENAME, 'r', encoding='utf-8') as f:
+            existing_settings = json.load(f)
+    except (FileNotFoundError, json.JSONDecodeError):
+        existing_settings = {}
+    
+    # Add the new path to a persistent list of allowed paths.
+    user_allowed_paths = existing_settings.get('user_allowed_paths', [])
+    if new_output_folder and new_output_folder not in user_allowed_paths:
+        user_allowed_paths.append(new_output_folder)
+    
+    # Combine the UI settings with the updated path list and save.
+    settings_to_save['user_allowed_paths'] = user_allowed_paths
+    save_settings_to_file(SETTINGS_FILENAME, *settings_to_save.values())
+    
+    gr.Info(f"Default settings saved. Restart the application for the new output path to be allowed.")
+    
+    # Return updates to make the relaunch UI visible.
+    return gr.update(visible=True), gr.update(visible=True)
 
 def save_ui_and_image_for_refresh(*args_from_ui_controls_tuple):
     """Saves UI state and the current image to temporary files for session recovery."""
