@@ -61,6 +61,12 @@ def _save_final_preview(history_latents, vae, job_id, task_id, outputs_folder, c
     return final_video_path
 
 
+def _signal_abort_to_ui(output_queue_ref, task_id, video_path):
+    """Helper to send a consistently formatted abort message to the UI queue."""
+    print(f"Task {task_id}: Signaling abort to UI, providing video path: {video_path}")
+    output_queue_ref.push(('aborted', (task_id, video_path)))
+
+
 @torch.no_grad()
 def worker(
     # --- Task I/O & Identity ---
@@ -538,7 +544,7 @@ def worker(
             # A graceful abort is not a full success, but we provide the preview path.
             success = False
             final_output_filename = graceful_abort_preview_path
-            output_queue_ref.push(('aborted', task_id))
+            _signal_abort_to_ui(output_queue_ref, task_id, graceful_abort_preview_path)
 
         # This else block runs only if the loop completed naturally without an abort signal.
         else:
@@ -547,7 +553,7 @@ def worker(
 
     except (InterruptedError, KeyboardInterrupt) as e:
         print(f"Worker task {task_id} caught explicit abort signal: {e}")
-        output_queue_ref.push(('aborted', task_id))
+        _signal_abort_to_ui(output_queue_ref, task_id, graceful_abort_preview_path)
         success = False
         final_output_filename = graceful_abort_preview_path
     except Exception as e:

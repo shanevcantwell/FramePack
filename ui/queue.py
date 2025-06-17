@@ -227,8 +227,13 @@ def autosave_queue_on_exit_action(state_dict_gr_state_ref):
     except Exception as e: print(f"Error during autosave: {e}"); traceback.print_exc()
 
 def autoload_queue_on_start_action(state_dict_gr_state):
-    queue_state = get_queue_state(state_dict_gr_state) # Uses imported helper
-    df_update = update_queue_df_display(queue_state) # Uses imported helper
+    """
+    Loads the queue from the autosave file if it exists.
+    This function no longer sets UI states for buttons, as that is now handled
+    exclusively by the process_task_queue_main_loop on startup.
+    """
+    queue_state = get_queue_state(state_dict_gr_state)
+    df_update = update_queue_df_display(queue_state)
     if not queue_state["queue"] and Path(AUTOSAVE_FILENAME).is_file():
         print(f"Autoloading queue from {AUTOSAVE_FILENAME}...")
         class MockFilepath:
@@ -248,14 +253,10 @@ def autoload_queue_on_start_action(state_dict_gr_state):
             print("Autoload: File existed but queue remains empty. Resetting queue.")
             queue_state["queue"] = []
             queue_state["next_id"] = 1
-            df_update = update_queue_df_display(queue_state) # Uses imported helper
-    is_processing_on_load = queue_state.get("processing", False) and bool(queue_state.get("queue"))
-    initial_video_path = state_dict_gr_state.get("last_completed_video_path")
-    if initial_video_path and not os.path.exists(initial_video_path):
-        print(f"Warning: Last completed video file not found at {initial_video_path}. Clearing reference.")
-        initial_video_path = None
-        state_dict_gr_state["last_completed_video_path"] = None
-    return (state_dict_gr_state, df_update, gr.update(interactive=not is_processing_on_load), gr.update(interactive=is_processing_on_load), gr.update(value=initial_video_path))
+            df_update = update_queue_df_display(queue_state)
+    
+    # Only return the state and the dataframe.
+    return state_dict_gr_state, df_update
 
 def process_task_queue_main_loop(state_dict_gr_state):
     queue_state = get_queue_state(state_dict_gr_state) # Uses imported helper
@@ -319,7 +320,7 @@ def process_task_queue_main_loop(state_dict_gr_state):
             flag, data_from_worker = actual_output_queue.next()
             if flag == 'progress':
                 msg_task_id, preview_np_array, desc_str, html_str = data_from_worker
-                if msg_task_id == current_task_id: yield (state_dict_gr_state, update_queue_df_display(queue_state), gr.update(value=last_known_output_filename), gr.update(value=preview_np_array), desc_str, html_str, gr.update(interactive=False), gr.update(interactive=True), gr.update(interactive=True)) # Uses imported helper
+                if msg_task_id == current_task_id: yield (state_dict_gr_state, update_queue_df_display(queue_state), gr.update(value=last_known_output_filename), gr.update(value=preview_np_array, visible=True), desc_str, html_str, gr.update(interactive=False), gr.update(interactive=True), gr.update(interactive=True))
             elif flag == 'file':
                 msg_task_id, segment_file_path, segment_info = data_from_worker
                 if msg_task_id == current_task_id: last_known_output_filename = segment_file_path; gr.Info(f"Task {current_task_id}: {segment_info}")
