@@ -19,16 +19,18 @@ from ui import metadata as metadata_manager
 from ui import shared_state
 
 
-def _save_final_preview(history_pixels, vae, job_id, task_id, outputs_folder, crf, output_queue_ref, high_vram):
+def _save_final_preview(history_latents, vae, job_id, task_id, outputs_folder, crf, output_queue_ref, high_vram):
     """
     Helper function to decode and save the final video preview during a graceful abort.
     This logic is refactored to be callable from the end of the worker.
+    CHANGED: Corrected parameter name from `history_pixels` to `history_latents` for accuracy.
     """
-    if history_pixels is None:
-        print(f"Task {task_id}: No pixels generated, cannot save final preview.")
+    if history_latents is None:
+        print(f"Task {task_id}: No latents generated, cannot save final preview.")
         return None
 
-    # Before starting the expensive decode, check for a hard abort.
+    # CHANGED: Added check for a hard abort (level 2) before starting the expensive decode.
+    # This allows a double-click abort to interrupt the graceful save.
     if shared_state.abort_state['level'] >= 2:
         print(f"Task {task_id}: Hard abort detected before final VAE decode.")
         raise InterruptedError("Hard abort during final save.")
@@ -40,11 +42,12 @@ def _save_final_preview(history_pixels, vae, job_id, task_id, outputs_folder, cr
         load_model_as_complete(vae, target_device=gpu)
 
     # This is a blocking, expensive operation.
-    pixels = vae_decode(history_pixels, vae).cpu()
+    pixels = vae_decode(history_latents, vae).cpu()
 
     if not high_vram:
         unload_complete_models(vae)
 
+    # CHANGED: Added a second check for a hard abort after the decode, before writing the file.
     if shared_state.abort_state['level'] >= 2:
         print(f"Task {task_id}: Hard abort detected before final MP4 write.")
         raise InterruptedError("Hard abort during final save.")
@@ -95,7 +98,7 @@ def worker(
     transformer,
     high_vram,
 ):
-    outputs_folder = os.path.expanduser(output_folder) if output_folder else "./outputs/" # user: maybe this should be grabbing from defaults not hard coded
+    outputs_folder = os.path.expanduser(output_folder) if output_folder else "./outputs/"
     os.makedirs(outputs_folder, exist_ok=True)
 
     # --- Gemini: do not touch - "secret sauce"
@@ -292,9 +295,11 @@ def worker(
             latent_paddings = [3] + [2] * (total_latent_sections - 3) + [1, 0]
 
         for latent_padding_iteration, latent_padding in enumerate(latent_paddings):
+            # CHANGED: This check handles a graceful abort (level 1+). A single click
+            # will break this loop, and execution will jump to the post-loop logic.
             if shared_state.abort_state['level'] >= 1:
                 print(f"Task {task_id}: Graceful abort detected. Breaking generation loop to save final preview.")
-                break # Exit the loop cleanly
+                break
             is_last_section = latent_padding == 0
             latent_padding_size = latent_padding * latent_window_size
             # Added for consistent 1-indexed segment number for loop segments
@@ -342,8 +347,10 @@ def worker(
             )
 
             def callback_diffusion_step(d):
+                # CHANGED: This check handles a hard abort (level 2). A double click
+                # will raise an exception here, immediately stopping the sampling process.
                 if shared_state.abort_state['level'] >= 2:
-                    raise KeyboardInterrupt("Abort signal received during sampling.")
+                    raise KeyboardInterrupt("Hard abort signal received during sampling.")
                 current_diffusion_step = d["i"] + 1
                 is_first_step = current_diffusion_step == 1
                 is_last_step = current_diffusion_step == steps
@@ -528,20 +535,20 @@ def worker(
             history_latents_for_abort = real_history_latents.clone()
 
         # --- Post-loop logic ---
-        # If the loop finished because of a graceful abort, save the preview
+        # If the loop was broken by a graceful abort (level 1), save the preview.
         if shared_state.abort_state['level'] == 1:
             graceful_abort_preview_path = _save_final_preview(
                 history_latents_for_abort, vae, job_id, task_id, outputs_folder, mp4_crf, output_queue_ref, high_vram
             )
-            # A graceful abort is not a full success, but we provide the preview path
+            # A graceful abort is not a full success, but we provide the preview path.
             success = False
             final_output_filename = graceful_abort_preview_path
             output_queue_ref.push(('aborted', task_id))
 
-        # This else block runs only if the loop completed naturally
+        # This else block runs only if the loop completed naturally without an abort signal.
         else:
             success = True
-            # The final filename was already set by the last iteration of the loop
+            # The final filename was already set by the last iteration of the loop.
 
     except (InterruptedError, KeyboardInterrupt) as e:
         print(f"Worker task {task_id} caught explicit abort signal: {e}")

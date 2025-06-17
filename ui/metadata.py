@@ -11,17 +11,17 @@ from . import shared_state
 
 def extract_metadata_from_pil_image(pil_image: Image.Image) -> dict:
     """Extracts a 'parameters' dictionary from a PIL image's text chunk."""
-    if pil_image is None: 
+    if pil_image is None:
         return {}
-    
+
     pnginfo_data = getattr(pil_image, 'text', None)
     if not isinstance(pnginfo_data, dict):
         return {}
-    
+
     params_json_str = pnginfo_data.get('parameters')
     if not params_json_str:
         return {}
-    
+
     try:
         extracted_params = json.loads(params_json_str)
         return extracted_params if isinstance(extracted_params, dict) else {}
@@ -40,20 +40,20 @@ def write_image_metadata(pil_image: Image.Image, params_dict: dict) -> Image.Ima
 
 def open_and_check_metadata(temp_file):
     """
-    Opens a temporary file object, converts to PIL, checks for metadata, 
+    Opens a temporary file object, converts to PIL, checks for metadata,
     and returns the PIL image, prompt, and full metadata dict.
     """
     if not temp_file:
         return None, "", {}
-    
+
     try:
         pil_image = Image.open(temp_file.name)
         extracted_metadata = extract_metadata_from_pil_image(pil_image)
         prompt_preview = ""
-        
+
         if extracted_metadata and any(key in extracted_metadata for key in shared_state.CREATIVE_PARAM_KEYS):
             prompt_preview = extracted_metadata.get('prompt', '')
-            
+
         return pil_image, prompt_preview, extracted_metadata
     except Exception as e:
         print(f"Error processing uploaded file: {e}")
@@ -67,12 +67,12 @@ def ui_load_params_from_image_metadata(extracted_metadata):
     if not extracted_metadata:
         gr.Info("No parameters found to apply.")
         return updates
-        
+
     gr.Info(f"Applying creative settings from image...")
     for i, key in enumerate(shared_state.CREATIVE_PARAM_KEYS):
         if key in extracted_metadata:
             updates[i] = gr.update(value=extracted_metadata[key])
-            
+
     return updates
 
 # CHANGED: New helper function to construct a params dict from the UI values.

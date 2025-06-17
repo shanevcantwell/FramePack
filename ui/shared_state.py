@@ -7,7 +7,9 @@ queue_lock = threading.Lock()
 
 # Event to signal the abortion of the current processing task.
 # This is kept for compatibility and as a simple, overarching abort flag.
-abort_event = threading.Event()
+# MODIFIED START: Renamed abort_event to interrupt_flag
+interrupt_flag = threading.Event()
+# MODIFIED END
 
 # CHANGED: Added state dictionary for the multi-level abort feature.
 # 'level' 0: No abort. 1: Graceful abort (1-click). 2: Hard abort (2-click).
@@ -23,34 +25,48 @@ models = {}
 # handler to enable the autosave functionality on browser close or exit.
 global_state_for_autosave = {}
 
+# ADDED: Dictionary to hold system-level information detected at startup.
+system_info = {
+    'is_legacy_gpu': False,
+}
+
 
 # --- UI and Parameter Mapping Constants ---
-CREATIVE_PARAM_KEYS = [
-    'prompt', 'n_prompt', 'total_second_length', 'seed', 'preview_frequency_ui',
-    'segments_to_decode_csv', 'gs_ui', 'gs_schedule_shape_ui', 'gs_final_ui', 'steps', 'cfg', 'rs'
+# ADDED: Centralized lists of UI component keys to ensure consistency across modules.
+CREATIVE_UI_KEYS = [
+    'prompt_ui', 'n_prompt_ui', 'total_second_length_ui', 'seed_ui', 'preview_frequency_ui',
+    'segments_to_decode_csv_ui', 'gs_ui', 'gs_schedule_shape_ui', 'gs_final_ui', 'steps_ui', 'cfg_ui', 'rs_ui'
 ]
-ENVIRONMENT_PARAM_KEYS = [
-    'use_teacache', 'use_fp32_transformer_output_ui', 'gpu_memory_preservation',
-    'mp4_crf', 'output_folder_ui', 'latent_window_size'
+ENVIRONMENT_UI_KEYS = [
+    'use_teacache_ui', 'use_fp32_transformer_output_checkbox_ui', 'gpu_memory_preservation_ui',
+    'mp4_crf_ui', 'output_folder_ui_ctrl', 'latent_window_size_ui'
 ]
-ALL_TASK_UI_KEYS = CREATIVE_PARAM_KEYS + ENVIRONMENT_PARAM_KEYS
+ALL_TASK_UI_KEYS = CREATIVE_UI_KEYS + ENVIRONMENT_UI_KEYS
+
+# CHANGED: Corrected the keys of this map to be the actual UI component keys.
+# This map is the single source of truth for converting UI component names to worker parameter names.
 UI_TO_WORKER_PARAM_MAP = {
-    'prompt': 'prompt',
-    'n_prompt': 'n_prompt',
-    'total_second_length': 'total_second_length',
-    'seed': 'seed',
-    'use_teacache': 'use_teacache',
+    'prompt_ui': 'prompt',
+    'n_prompt_ui': 'n_prompt',
+    'total_second_length_ui': 'total_second_length',
+    'seed_ui': 'seed',
     'preview_frequency_ui': 'preview_frequency',
-    'segments_to_decode_csv': 'segments_to_decode_csv',
+    'segments_to_decode_csv_ui': 'segments_to_decode_csv',
     'gs_ui': 'gs',
     'gs_schedule_shape_ui': 'gs_schedule_active',
     'gs_final_ui': 'gs_final',
-    'steps': 'steps',
-    'cfg': 'cfg',
-    'latent_window_size': 'latent_window_size',
-    'gpu_memory_preservation': 'gpu_memory_preservation',
-    'use_fp32_transformer_output_ui': 'use_fp32_transformer_output',
-    'rs': 'rs',
-    'mp4_crf': 'mp4_crf',
-    'output_folder_ui': 'output_folder'
+    'steps_ui': 'steps',
+    'cfg_ui': 'cfg',
+    'rs_ui': 'rs',
+    'use_teacache_ui': 'use_teacache',
+    'use_fp32_transformer_output_checkbox_ui': 'use_fp32_transformer_output',
+    'gpu_memory_preservation_ui': 'gpu_memory_preservation',
+    'mp4_crf_ui': 'mp4_crf',
+    'output_folder_ui_ctrl': 'output_folder',
+    'latent_window_size_ui': 'latent_window_size'
 }
+
+# The CREATIVE_PARAM_KEYS list defines the canonical names for parameters that are saved
+# within image metadata and is used when loading that metadata back into the UI.
+# CHANGED: This is now built dynamically to guarantee its order and content match the UI keys and the map.
+CREATIVE_PARAM_KEYS = [UI_TO_WORKER_PARAM_MAP[key] for key in CREATIVE_UI_KEYS]

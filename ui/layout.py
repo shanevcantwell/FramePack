@@ -16,11 +16,11 @@ def create_ui():
     components = {}
 
     css = """
-    #queue_df { font-size: 0.85rem; } 
+    #queue_df { font-size: 0.85rem; }
     #queue_df th, #queue_df td { text-align: center; }
     .gradio-container { max-width: 95% !important; margin: auto !important; }
     """
-    
+
     block = gr.Blocks(css=css, title="goan").queue()
     components['block'] = block
 
@@ -33,7 +33,7 @@ def create_ui():
 
         extracted_metadata_state = gr.State({})
         components['extracted_metadata_state'] = extracted_metadata_state
-        
+
         modal_trigger_box = gr.Textbox(visible=False)
         components['modal_trigger_box'] = modal_trigger_box
 
@@ -53,13 +53,13 @@ def create_ui():
                 components['image_file_input_ui'] = gr.File(label="Drop Image Here or Click to Upload", file_types=["image"])
                 # This Image display is hidden by default and has a fixed height.
                 components['input_image_display_ui'] = gr.Image(type="pil", label="Current Input Image", interactive=False, visible=False, height=220, show_download_button=False)
-                
+
                 components['add_task_button'] = gr.Button("Add to Queue", variant="secondary")
                 # CHANGED: Moved Clear and Download buttons into their own row for better layout.
                 with gr.Row():
                     components['clear_image_button_ui'] = gr.Button("Clear Image", variant="secondary", visible=False)
                     components['download_image_button_ui'] = gr.Button("Download", variant="secondary", visible=False)
-                
+
                 components['process_queue_button'] = gr.Button("▶️ Process Queue", variant="primary")
                 components['abort_task_button'] = gr.Button("⏹️ Abort", variant="stop", interactive=True)
                 components['cancel_edit_task_button'] = gr.Button("Cancel Edit", visible=False, variant="secondary")
@@ -115,5 +115,5 @@ def create_ui():
                 components['current_task_progress_desc_ui'] = gr.Markdown('')
                 components['current_task_progress_bar_ui'] = gr.HTML('')
                 components['last_finished_video_ui'] = gr.Video(interactive=True, autoplay=False, height=540)
-                
+
     return components
