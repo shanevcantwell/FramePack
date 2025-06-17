@@ -63,18 +63,28 @@ def ui_load_params_from_image_metadata(extracted_metadata):
     """
     Loads ONLY the creative parameters from a metadata dictionary and returns UI updates.
     """
-    updates = [gr.update()] * len(shared_state.CREATIVE_PARAM_KEYS)
+    updates = [gr.update()] * len(shared_state.CREATIVE_UI_KEYS)
     if not extracted_metadata:
         gr.Info("No parameters found to apply.")
         return updates
 
     gr.Info(f"Applying creative settings from image...")
-    for i, key in enumerate(shared_state.CREATIVE_PARAM_KEYS):
-        if key in extracted_metadata:
-            updates[i] = gr.update(value=extracted_metadata[key])
+    # Map creative param worker keys to their corresponding UI component keys
+    param_to_ui_map = {v: k for k, v in shared_state.UI_TO_WORKER_PARAM_MAP.items()}
+
+    for i, param_key in enumerate(shared_state.CREATIVE_PARAM_KEYS):
+        if param_key in extracted_metadata:
+            value = extracted_metadata[param_key]
+            ui_key = param_to_ui_map.get(param_key)
+
+            # CORRECTED: Special handling for the variable CFG radio button
+            if ui_key == 'gs_schedule_shape_ui':
+                updates[i] = gr.update(value="Linear" if value else "Off")
+            else:
+                updates[i] = gr.update(value=value)
 
     return updates
-
+    
 # CHANGED: New helper function to construct a params dict from the UI values.
 def create_params_from_ui(*ui_values):
     """

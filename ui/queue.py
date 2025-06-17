@@ -260,6 +260,8 @@ def autoload_queue_on_start_action(state_dict_gr_state):
 def process_task_queue_main_loop(state_dict_gr_state):
     queue_state = get_queue_state(state_dict_gr_state) # Uses imported helper
     shared_state.interrupt_flag.clear()
+    # Reset the multi-level abort state at the start of every run
+    shared_state.abort_state.update({'level': 0, 'last_click_time': 0})
     output_stream_for_ui = state_dict_gr_state.get("active_output_stream_queue")
     if queue_state["processing"]:
         gr.Info("Queue processing is already active. Attempting to re-attach UI to live updates...")
