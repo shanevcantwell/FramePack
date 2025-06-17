@@ -110,6 +110,7 @@ def create_ui():
                 with gr.Row():
                     components['save_workspace_button'] = gr.Button("Save Workspace", variant="secondary")
                     components['load_workspace_button'] = gr.Button("Load Workspace", variant="secondary")
+                components['shutdown_button'] = gr.Button("Save All & Exit", variant="stop")
 
             with gr.Column(scale=1):
                 gr.Markdown("## Live Preview & Output")

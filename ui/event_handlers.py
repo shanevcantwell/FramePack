@@ -7,6 +7,22 @@ from PIL import Image
 from . import metadata as metadata_manager
 from . import shared_state
 
+def safe_shutdown_action(app_state, *ui_values):
+    """
+    Performs all necessary save operations to prepare the app for a clean shutdown.
+    Saves the queue and the current UI state.
+    """
+    print("Performing safe shutdown saves...")
+    
+    # 1. Save the current queue to the autosave file
+    queue_manager.autosave_queue_on_exit_action(app_state)
+    
+    # 2. Save the current UI state to the refresh file
+    workspace_manager.save_ui_and_image_for_refresh(*ui_values)
+    
+    # 3. Notify the user that it's safe to close
+    gr.Info("Queue and UI state saved. It is now safe to close the terminal.")
+
 def ui_update_total_segments(total_seconds_ui, latent_window_size_ui):
     """Calculates and displays the number of segments based on video length."""
     try:
