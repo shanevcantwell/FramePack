@@ -187,47 +187,14 @@ def clear_task_queue_action(state_dict_gr_state):
          except OSError as e: print(f"Error deleting autosave: {e}")
     return state_dict_gr_state, update_queue_df_display(queue_state) # Uses imported helper
 
-# def save_queue_to_zip(state_dict_gr_state):
-#     queue_state = get_queue_state(state_dict_gr_state); # Uses imported helper
-#     queue = queue_state.get("queue", [])
-#     if not queue: gr.Info("Queue is empty. Nothing to save."); return state_dict_gr_state, ""
-#     zip_buffer = io.BytesIO(); saved_files_count = 0
-#     try:
-#         with tempfile.TemporaryDirectory() as tmpdir:
-#             queue_manifest = []; image_paths_in_zip = {}
-#             for task in queue:
-#                 params_copy = task['params'].copy(); task_id_s = task['id']; input_image_np_data = params_copy.pop('input_image', None)
-#                 manifest_entry = {"id": task_id_s, "params": params_copy, "status": task.get("status", "pending")}
-#                 if input_image_np_data is not None:
-#                     img_hash = hash(input_image_np_data.tobytes()); img_filename_in_zip = f"task_{task_id_s}_input.png"; manifest_entry['image_ref'] = img_filename_in_zip
-#                     if img_hash not in image_paths_in_zip:
-#                         img_save_path = os.path.join(tmpdir, img_filename_in_zip)
-#                         try: Image.fromarray(input_image_np_data).save(img_save_path, "PNG"); image_paths_in_zip[img_hash] = img_filename_in_zip; saved_files_count +=1
-#                         except Exception as e: print(f"Error saving image for task {task_id_s} in zip: {e}")
-#                 queue_manifest.append(manifest_entry)
-#             manifest_path = os.path.join(tmpdir, shared_state.QUEUE_STATE_JSON_IN_ZIP); # Changed 'queue_manifest.json' to shared_state.QUEUE_STATE_JSON_IN_ZIP
-#             with open(manifest_path, 'w', encoding='utf-8') as f: json.dump(queue_manifest, f, indent=4)
-#             with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zf:
-#                 zf.write(manifest_path, arcname=shared_state.QUEUE_STATE_JSON_IN_ZIP) # Changed 'queue_manifest.json' to shared_state.QUEUE_STATE_JSON_IN_ZIP
-#                 for img_hash, img_filename_rel in image_paths_in_zip.items(): zf.write(os.path.join(tmpdir, img_filename_rel), arcname=img_filename_rel)
-#             zip_buffer.seek(0); zip_base64 = base64.b64encode(zip_buffer.getvalue()).decode('utf-8')
-#             gr.Info(f"Queue with {len(queue)} tasks ({saved_files_count} images) prepared for download.")
-#             return state_dict_gr_state, zip_base64
-#     except Exception as e: print(f"Error creating zip for queue: {e}"); traceback.print_exc(); gr.Warning("Failed to create zip data."); return state_dict_gr_state, ""
-#     finally: zip_buffer.close()
-
-
-import tempfile # Ensure tempfile is imported here if not already, as we'll use it to save the zip
 
 def save_queue_to_zip(state_dict_gr_state):
     queue_state = get_queue_state(state_dict_gr_state)
     queue = queue_state.get("queue", [])
     if not queue:
         gr.Info("Queue is empty. Nothing to save.")
-        return state_dict_gr_state, None # Return None for the file path if nothing to save
-
-    # Create a temporary file for the zip
-    # Use delete=False so Gradio can access it, then Gradio handles cleanup.
+        return state_dict_gr_state, None # Modified to return None for filepath
+    
     temp_zip_path = None
     try:
         with tempfile.NamedTemporaryFile(delete=False, suffix=".zip", mode="wb") as tmp_file:
@@ -236,37 +203,67 @@ def save_queue_to_zip(state_dict_gr_state):
             saved_files_count = 0
 
             with tempfile.TemporaryDirectory() as tmpdir:
-                queue_manifest = []; image_paths_in_zip = {}
-                for task in queue:
-                    params_copy = task['params'].copy(); task_id_s = task['id']; input_image_np_data = params_copy.pop('input_image', None)
-                    manifest_entry = {"id": task_id_s, "params": params_copy, "status": task.get("status", "pending")}
-                    if input_image_np_data is not None:
-                        img_hash = hash(input_image_np_data.tobytes()); img_filename_in_zip = f"task_{task_id_s}_input.png"; manifest_entry['image_ref'] = img_filename_in_zip
-                        if img_hash not in image_paths_in_zip:
-                            img_save_path = os.path.join(tmpdir, img_filename_in_zip)
-                            try: Image.fromarray(input_image_np_data).save(img_save_path, "PNG"); image_paths_in_zip[img_hash] = img_filename_in_zip; saved_files_count +=1
-                            except Exception as e: print(f"Error saving image for task {task_id_s} in zip: {e}")
-                    queue_manifest.append(manifest_entry)
+                queue_manifest = []
+                images_to_add_to_zip = [] # List to store paths of images to be added to the zip
 
+                for task in queue:
+                    params_copy = task['params'].copy()
+                    task_id_s = task['id']
+                    
+                    # DEBUG PRINT: Check if input_image is present in params before popping
+                    print(f"DEBUG_SAVE_ZIP: Task {task_id_s} - 'input_image' in params before pop: {'input_image' in params_copy}") 
+                    
+                    input_image_np_data = params_copy.pop('input_image', None) # Image data is popped from params_copy
+                    
+                    # DEBUG PRINT: Check the value of input_image_np_data after pop
+                    print(f"DEBUG_SAVE_ZIP: Task {task_id_s} - input_image_np_data after pop: {'Present' if input_image_np_data is not None else 'MISSING'}")
+                    
+                    manifest_entry = {"id": task_id_s, "params": params_copy, "status": task.get("status", "pending")}
+                    
+                    if input_image_np_data is not None:
+                        img_filename_in_zip = f"task_{task_id_s}_input.png" # Unique filename for EACH task's image
+                        manifest_entry['image_ref'] = img_filename_in_zip # Reference in manifest
+                        
+                        img_save_path = os.path.join(tmpdir, img_filename_in_zip)
+                        try:
+                            # DEBUG PRINT: Attempting to save
+                            print(f"DEBUG_SAVE_ZIP: Attempting to save image for Task {task_id_s} to {img_save_path}")
+                            Image.fromarray(input_image_np_data).save(img_save_path, "PNG")
+                            images_to_add_to_zip.append(img_save_path) # Add the path to list for zipping
+                            saved_files_count +=1
+                            # DEBUG PRINT: Successfully saved
+                            print(f"DEBUG_SAVE_ZIP: Successfully saved image for Task {task_id_s}. saved_files_count: {saved_files_count}")
+                        except Exception as e:
+                            # ERROR PRINT: Catch and print any image saving errors
+                            print(f"ERROR_SAVE_ZIP: Failed to save image for task {task_id_s} in zip: {e}")
+                            traceback.print_exc() # Print full traceback for the error
+                    else:
+                        print(f"DEBUG_SAVE_ZIP: Task {task_id_s} skipped image saving as input_image_np_data was None.")
+                    queue_manifest.append(manifest_entry)
+                
                 manifest_path = os.path.join(tmpdir, shared_state.QUEUE_STATE_JSON_IN_ZIP);
                 with open(manifest_path, 'w', encoding='utf-8') as f: json.dump(queue_manifest, f, indent=4)
-
+                
+                print(f"DEBUG_SAVE_ZIP: Images to be zipped: {images_to_add_to_zip}") # DEBUG: List all paths to be zipped
+                
                 with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zf:
                     zf.write(manifest_path, arcname=shared_state.QUEUE_STATE_JSON_IN_ZIP)
-                    for img_hash, img_filename_rel in image_paths_in_zip.items(): zf.write(os.path.join(tmpdir, img_filename_rel), arcname=img_filename_rel)
-
-                tmp_file.write(zip_buffer.getvalue()) # Write the zip content to the temporary file
+                    for img_path in images_to_add_to_zip: # Iterate through the list of saved image paths
+                        arcname = os.path.basename(img_path)
+                        zf.write(img_path, arcname=arcname) # Write each image to the zip
+            
+            tmp_file.write(zip_buffer.getvalue())
 
         gr.Info(f"Queue with {len(queue)} tasks ({saved_files_count} images) prepared for download.")
-        return state_dict_gr_state, temp_zip_path # Return the path here
+        return state_dict_gr_state, temp_zip_path
     except Exception as e:
-        print(f"Error creating zip for queue: {e}")
+        print(f"ERROR_SAVE_ZIP: Error creating zip for queue: {e}")
         traceback.print_exc()
         gr.Warning("Failed to create zip data.")
         if temp_zip_path and os.path.exists(temp_zip_path):
             try: os.remove(temp_zip_path) # Clean up temp file on error
-            except OSError as exc: print(f"Error cleaning up temp zip file: {exc}")
-        return state_dict_gr_state, None # Return None on error
+            except OSError as exc: print(f"ERROR_SAVE_ZIP: Error cleaning up temp zip file: {exc}")
+        return state_dict_gr_state, None
 
 
 def load_queue_from_zip(state_dict_gr_state, uploaded_zip_file_obj):
