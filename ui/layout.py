@@ -15,10 +15,33 @@ def create_ui():
     # Define a dictionary to hold all UI components, which will be returned.
     components = {}
 
+    # Applying the green primary button color directly in CSS
     css = """
     #queue_df { font-size: 0.85rem; }
     #queue_df th, #queue_df td { text-align: center; }
     .gradio-container { max-width: 95% !important; margin: auto !important; }
+
+    /* NEW CSS: Force primary buttons to green */
+    :root {
+        --color-accent-soft: #4CAF50; /* A shade of green */
+        --color-accent-50: #e8f5e9; /* Light green for hover/active backgrounds */
+        --color-accent-100: #c8e6c9;
+        --color-accent-200: #a5d6a7;
+        --color-accent-300: #81c784;
+        --color-accent-400: #66bb6a;
+        --color-accent-500: #4CAF50; /* Your primary green */
+        --color-accent-600: #43A047;
+        --color-accent-700: #388E3C;
+        --color-accent-800: #2E7D32;
+        --color-accent-900: #1B5E20;
+    }
+    .gr-button-primary {
+        background-color: var(--color-accent-500) !important;
+        color: white !important; /* Ensure text is readable */
+    }
+    .gr-button-primary:hover {
+        background-color: var(--color-accent-600) !important;
+    }
     """
 
     block = gr.Blocks(css=css, title="goan").queue()
@@ -81,6 +104,15 @@ def create_ui():
                 components['load_queue_button_ui'] = gr.UploadButton("Load Queue", file_types=[".zip"], size="sm")
                 components['clear_queue_button_ui'] = gr.Button("Clear Pending", size="sm", variant="stop")
 
+        # NEW LOCATION: Latent preview image is now here, after the task queue group
+        # This will make it full-width, scaled to maintain aspect ratio by default.
+        components['current_task_preview_image_ui'] = gr.Image(
+            label="Live Latent Preview", # Added a label for clarity in new position
+            interactive=False,
+            visible=False,
+            show_download_button=False # Ensure it doesn't have its own download button
+        )
+
         with gr.Row(equal_height=False):
             with gr.Column(scale=1):
                 # REMOVED: Video Length and Seed were here.
@@ -108,15 +140,14 @@ def create_ui():
                     components['reset_ui_button'] = gr.Button("Save & Refresh UI", variant="secondary")
 
                 with gr.Row():
-                    # CHANGED: Added a hidden File component to facilitate download.
-                    components['workspace_downloader_ui'] = gr.File(visible=False, file_count="single") # For save
+                    components['workspace_downloader_ui'] = gr.File(visible=False, file_count="single", elem_id="workspace_downloader_hidden_file") # For save
                     components['save_workspace_button'] = gr.Button("Save Workspace", variant="secondary")
                     components['load_workspace_button'] = gr.UploadButton("Load Workspace", file_types=[".json"]) # For load
                 components['shutdown_button'] = gr.Button("Save All & Exit", variant="stop")
 
-            with gr.Column(scale=1):
+            with gr.Column(scale=1): # This column now contains only video, progress desc, and progress bar
                 gr.Markdown("## Live Preview & Output")
-                components['current_task_preview_image_ui'] = gr.Image(interactive=False, visible=False)
+                # components['current_task_preview_image_ui'] was moved from here
                 components['current_task_progress_desc_ui'] = gr.Markdown('')
                 components['current_task_progress_bar_ui'] = gr.HTML('')
                 components['last_finished_video_ui'] = gr.Video(interactive=True, autoplay=False, height=540)

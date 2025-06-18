@@ -95,14 +95,45 @@ def move_task_in_queue(state_dict_gr_state, direction: str, selected_indices_lis
         elif direction == 'down' and idx < len(queue) - 1: queue[idx], queue[idx+1] = queue[idx+1], queue[idx]
     return state_dict_gr_state, update_queue_df_display(queue_state) # Uses imported helper
 
+# This is a helper function used by others, kept here for context.
+# def remove_task_from_queue(state_dict_gr_state, task_index: int): # The external helper doesn't use selected_indices_list directly
+#     """Removes a task at a given index from the queue."""
+#     queue_state = get_queue_state(state_dict_gr_state)
+#     queue = queue_state["queue"]
+#     removed_task_id = None
+
+#     with shared_state.queue_lock:
+#         if 0 <= task_index < len(queue):
+#             removed_task = queue.pop(task_index)
+#             removed_task_id = removed_task['id']
+#             gr.Info(f"Removed task {removed_task_id}.")
+#         else:
+#             gr.Warning("Invalid index for removal.")
+
+#     return state_dict_gr_state, removed_task_id # The helper itself doesn't update the DF display directly.
+
 def remove_task_from_queue(state_dict_gr_state, selected_indices_list: list):
     removed_task_id = None
-    if not selected_indices_list or not selected_indices_list[0]: return state_dict_gr_state, update_queue_df_display(get_queue_state(state_dict_gr_state)), removed_task_id # Uses imported helper
-    idx = int(selected_indices_list[0][0]); queue_state = get_queue_state(state_dict_gr_state); queue = queue_state["queue"] # Uses imported helper
+    if not selected_indices_list or not selected_indices_list[0]:
+        return state_dict_gr_state, update_queue_df_display(get_queue_state(state_dict_gr_state)), removed_task_id # Uses imported helper
+
+    # Ensure we get the raw integer index for clarity
+    row_to_remove_idx = int(selected_indices_list[0][0])
+    queue_state = get_queue_state(state_dict_gr_state)
+    queue = queue_state["queue"]
+
     with shared_state.queue_lock:
-        if 0 <= idx < len(queue): removed_task = queue.pop(idx); removed_task_id = removed_task['id']; gr.Info(f"Removed task {removed_task_id}.")
-        else: gr.Warning("Invalid index for removal.")
-    return state_dict_gr_state, update_queue_df_display(queue_state), removed_task_id # Uses imported helper
+        if 0 <= row_to_remove_idx < len(queue):
+            # Capture the ID of the task *before* popping, for the info message
+            removed_task = queue.pop(row_to_remove_idx)
+            removed_task_id = removed_task['id']
+            gr.Info(f"Removed task {removed_task_id} at display index {row_to_remove_idx}.")
+        else:
+            gr.Warning("Invalid index for removal.")
+            return state_dict_gr_state, update_queue_df_display(queue_state), removed_task_id
+
+    # The dataframe display update should immediately reflect the change
+    return state_dict_gr_state, update_queue_df_display(queue_state), removed_task_id
 
 def handle_queue_action_on_select(evt: gr.SelectData, state_dict_gr_state, *ui_param_controls_tuple):
     if evt.index is None or evt.value not in ["↑", "↓", "✖", "✎"]:
