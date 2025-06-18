@@ -6,7 +6,6 @@ import os
 import atexit
 import gradio as gr
 import tempfile
-import threading
 
 # --- Local Application Imports ---
 from core import args as args_manager
@@ -283,89 +282,6 @@ with block:
 # --- Application Launch ---
 if __name__ == "__main__":
     print("Starting goan FramePack UI...")
-    # Define a shared state for graceful exit flag, for main app loop to check
-    # and a separate flag for immediate exit.
-    # shared_state.interrupt_flag is used for aborting current task.
-    # We'll use a new event for signaling a full application exit.
-    shared_state.app_exit_event = threading.Event() # NEW: Event for signaling application exit
-
-    def console_listener():
-        while True:
-            try:
-                # Use sys.stdin.readline for better control and non-blocking if needed (though input() is simpler for basic commands)
-                # For direct 'ZZ' without Enter, or ':q!' without Enter, this is not possible with basic input().
-                # We will require Enter after the command.
-                command = input("\n> Console command ('q' or 'quit' for safe exit, 'abort' to stop current task, 'ZZ' to save & exit, ':q!' to exit immediately): ").strip() # Removed .lower() for :q!
-                
-                if command.lower() in ['q', 'quit']:
-                    print("Initiating graceful shutdown...")
-                    shared_state.interrupt_flag.set() # Signal abort for any running task
-                    shared_state.abort_state['level'] = 2 # Force hard abort for quicker exit
-                    shared_state.app_exit_event.set() # Signal main app to exit
-                    break # Exit the console listener loop
-                elif command.lower() == 'abort':
-                    print("Sending graceful abort signal to current task...")
-                    shared_state.interrupt_flag.set() # Signal abort
-                    shared_state.abort_state['level'] = 1 # Graceful abort
-                elif command == 'ZZ': # Case-sensitive for direct 'ZZ' if typed
-                    print("Console: 'ZZ' detected. Initiating graceful save and exit...")
-                    # Trigger autosave on exit immediately
-                    queue_manager.autosave_queue_on_exit_action(shared_state.global_state_for_autosave)
-                    print("Autosave complete. Signaling application exit.")
-                    shared_state.interrupt_flag.set() # Signal abort for any running task
-                    shared_state.abort_state['level'] = 2 # Force hard abort for quicker exit
-                    shared_state.app_exit_event.set() # Signal main app to exit
-                    break # Exit the console listener loop
-                elif command == ':q!': # Case-sensitive for ':q!'
-                    print("Console: ':q!' detected. Exiting immediately without saving.")
-                    # Do NOT trigger autosave. Force terminate.
-                    os._exit(0) # This will exit the process immediately. Use with caution.
-                else:
-                    print("Unknown command. Valid commands: 'q' (quit), 'abort', 'ZZ', ':q!'.")
-            except EOFError: # Ctrl+D or end of input stream
-                print("\nEOF detected. Exiting console listener.")
-                shared_state.interrupt_flag.set()
-                shared_state.abort_state['level'] = 2
-                shared_state.app_exit_event.set()
-                break
-            except Exception as e:
-                print(f"Console listener error: {e}")
-                time.sleep(1) # Prevent busy-looping on error
-
-    # Start the console listener in a daemon thread
-    console_thread = threading.Thread(target=console_listener, daemon=True)
-    console_thread.start()
-
-    print("----------------------------------------------------------------------------------------------------")
-    print("Service Console: Type 'q' or 'quit' to safely exit, 'abort' to stop current task,")
-    print("                 'ZZ' to save & exit, ':q!' to exit immediately (no save).")
-    print("----------------------------------------------------------------------------------------------------")
-
-    # This part of the code needs to gracefully exit when shared_state.app_exit_event is set.
-    # The block.launch() call itself is usually blocking.
-    # For a clean exit initiated from console, you'd typically need to terminate the Gradio server
-    # via a signal or a specific Gradio API call, which is not directly exposed for this use case.
-    # The os._exit(0) for ':q!' is a forceful exit.
-    # For 'q'/'quit'/'ZZ', the atexit handler for autosave will still fire if the process ends naturally.
-    # However, if the Gradio server keeps running, the 'app_exit_event' needs to be checked by the main Gradio loop.
-    # Gradio's `launch()` is blocking, so a clean exit often requires sending a signal to the process itself.
-    # The `atexit` will cover the save on normal Python exit.
-
-    # Example of how you might handle a cleaner exit if block.launch() supported a shutdown event:
-    # block.launch(..., shutdown_event=shared_state.app_exit_event) # Hypothetical feature
-
-    # For now, `os._exit(0)` is the only truly immediate exit without relying on Gradio's internal shutdown.
-    # For 'q'/'quit'/'ZZ', setting the event and relying on atexit is the closest you can get to graceful from console.
-    # The user will still need to Ctrl+C after 'q' or 'ZZ' to terminate the main Gradio process,
-    # *unless* Gradio's launch loop itself polls the `shared_state.app_exit_event`.
-    # Gradio's launch loop does not expose a way to check an external exit event directly.
-
-    # Therefore, for 'q' and 'ZZ' to actually *shut down the Gradio server*, you will still likely need a Ctrl+C after
-    # the save/abort message appears, unless you use os._exit(0) for those too (which defeats 'graceful save').
-    # This is a limitation of mixing blocking server calls with console input for full application control.
-
-
-
     initial_output_folder_path = workspace_manager.get_initial_output_folder_from_settings()
     expanded_outputs_folder_for_launch = os.path.abspath(initial_output_folder_path)
     final_allowed_paths = [expanded_outputs_folder_for_launch]
