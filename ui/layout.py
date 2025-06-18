@@ -108,8 +108,10 @@ def create_ui():
                     components['reset_ui_button'] = gr.Button("Save & Refresh UI", variant="secondary")
 
                 with gr.Row():
+                    # CHANGED: Added a hidden File component to facilitate download.
+                    components['workspace_downloader_ui'] = gr.File(visible=False, file_count="single") # For save
                     components['save_workspace_button'] = gr.Button("Save Workspace", variant="secondary")
-                    components['load_workspace_button'] = gr.Button("Load Workspace", variant="secondary")
+                    components['load_workspace_button'] = gr.UploadButton("Load Workspace", file_types=[".json"]) # For load
                 components['shutdown_button'] = gr.Button("Save All & Exit", variant="stop")
 
             with gr.Column(scale=1):

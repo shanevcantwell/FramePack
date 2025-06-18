@@ -70,3 +70,6 @@ UI_TO_WORKER_PARAM_MAP = {
 # within image metadata and is used when loading that metadata back into the UI.
 # CHANGED: This is now built dynamically to guarantee its order and content match the UI keys and the map.
 CREATIVE_PARAM_KEYS = [UI_TO_WORKER_PARAM_MAP[key] for key in CREATIVE_UI_KEYS]
+
+# ADDED: Centralized constant for the queue state JSON filename inside the zip.
+QUEUE_STATE_JSON_IN_ZIP = "queue_state.json" # THIS IS THE NEW LINE

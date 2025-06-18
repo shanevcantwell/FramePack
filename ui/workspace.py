@@ -5,8 +5,10 @@ import gradio as gr
 import json
 import os
 import traceback
-import tkinter as tk
-from tkinter import filedialog
+import tempfile # ADDED: Import tempfile module
+# REMOVED: tkinter is no longer used for file dialogs.
+# import tkinter as tk
+# from tkinter import filedialog
 from PIL import Image
 
 # Import shared state and other managers
@@ -48,12 +50,11 @@ def get_default_values_map():
         'latent_window_size_ui': 9,
     }
 
-def save_settings_to_file(filepath, *ui_values_tuple):
-    """Saves a tuple of UI values to a specified JSON file."""
-    settings_to_save = dict(zip(shared_state.ALL_TASK_UI_KEYS, ui_values_tuple))
+def save_settings_to_file(filepath, settings_dict): # CHANGED: Now accepts a settings dictionary
+    """Saves a dictionary of settings to a specified JSON file."""
     try:
         with open(filepath, 'w', encoding='utf-8') as f:
-            json.dump(settings_to_save, f, indent=4)
+            json.dump(settings_dict, f, indent=4) # CHANGED: Dump the dictionary directly
         gr.Info(f"Workspace saved to {filepath}")
     except Exception as e:
         gr.Warning(f"Error saving workspace: {e}")
@@ -68,7 +69,7 @@ def load_settings_from_file(filepath, return_updates=True):
         gr.Info(f"Loaded workspace from {filepath}")
     except Exception as e:
         gr.Warning(f"Could not load workspace from {filepath}: {e}")
-        loaded_settings = {}
+        loaded_settings = {} # If loading fails, use an empty dict to fall back to defaults
 
     final_settings = {**default_values, **loaded_settings}
     output_values = [final_settings.get(key, default_values.get(key)) for key in shared_state.ALL_TASK_UI_KEYS]
@@ -84,9 +85,21 @@ def load_settings_from_file(filepath, return_updates=True):
             elif key in ['use_teacache_ui', 'use_fp32_transformer_output_checkbox_ui']:
                 output_values[i] = bool(output_values[i])
         except (ValueError, TypeError):
+            # If conversion fails, revert to default for that specific key
             output_values[i] = default_values.get(key)
-
+            gr.Warning(f"Invalid value for {key} in loaded settings. Reverting to default.") # Added a warning here
+            
     return [gr.update(value=v) for v in output_values] if return_updates else output_values
+
+def load_workspace(uploaded_file):
+    """Loads a workspace from an uploaded JSON file."""
+    if uploaded_file is None or not hasattr(uploaded_file, 'name') or not os.path.exists(uploaded_file.name):
+        gr.Warning("No valid file selected or uploaded.")
+        # If no valid file, return updates to default values
+        return load_settings_from_file(None) # Pass None to trigger default loading path
+        # return [gr.update()] * len(shared_state.ALL_TASK_UI_KEYS) # Original placeholder, less robust
+
+    return load_settings_from_file(uploaded_file.name)
 
 def get_initial_output_folder_from_settings():
     """
@@ -114,18 +127,24 @@ def get_initial_output_folder_from_settings():
 
 # --- UI Handler Functions ---
 
+# CHANGED: save_workspace now prepares data for download and returns a file path.
 def save_workspace(*ui_values_tuple):
-    """Opens a file dialog to save the full workspace settings."""
-    root = tk.Tk(); root.withdraw()
-    file_path = filedialog.asksaveasfilename(defaultextension=".json", initialfile="goan_workspace.json", filetypes=[("JSON files", "*.json")])
-    root.destroy()
-    if file_path: save_settings_to_file(file_path, *ui_values_tuple)
-    else: gr.Warning("Save cancelled.")
+    """Prepares the full workspace settings as a JSON string for download."""
+    settings_to_save = dict(zip(shared_state.ALL_TASK_UI_KEYS, ui_values_tuple))
+    json_data = json.dumps(settings_to_save, indent=4)
 
-# def save_as_default_workspace(*ui_values_tuple):
-#     """Saves the current UI settings as the default startup configuration."""
-#     gr.Info(f"Saving current settings as default to {SETTINGS_FILENAME}")
-#     save_settings_to_file(SETTINGS_FILENAME, *ui_values_tuple)
+    # Create a temporary file to hold the JSON data for Gradio to download
+    # Gradio's DownloadButton expects a path to a file.
+    try:
+        temp_file_path = os.path.join(tempfile.gettempdir(), "goan_workspace.json")
+        with open(temp_file_path, 'w', encoding='utf-8') as f:
+            f.write(json_data)
+        gr.Info("Workspace prepared for download.")
+        return temp_file_path # Return the path for the DownloadButton
+    except Exception as e:
+        gr.Warning(f"Error preparing workspace for download: {e}")
+        traceback.print_exc()
+        return None # Return None if preparation fails
 
 def save_as_default_workspace(*ui_values_tuple):
     """
@@ -141,18 +160,19 @@ def save_as_default_workspace(*ui_values_tuple):
             existing_settings = json.load(f)
     except (FileNotFoundError, json.JSONDecodeError):
         existing_settings = {}
-    
+
     # Add the new path to a persistent list of allowed paths.
     user_allowed_paths = existing_settings.get('user_allowed_paths', [])
     if new_output_folder and new_output_folder not in user_allowed_paths:
         user_allowed_paths.append(new_output_folder)
-    
+
     # Combine the UI settings with the updated path list and save.
     settings_to_save['user_allowed_paths'] = user_allowed_paths
-    save_settings_to_file(SETTINGS_FILENAME, *settings_to_save.values())
-    
+    # CHANGED: Pass the settings_to_save dictionary directly.
+    save_settings_to_file(SETTINGS_FILENAME, settings_to_save)
+
     gr.Info(f"Default settings saved. Restart the application for the new output path to be allowed.")
-    
+
     # Return updates to make the relaunch UI visible.
     return gr.update(visible=True), gr.update(visible=True)
 
@@ -183,14 +203,20 @@ def save_ui_and_image_for_refresh(*args_from_ui_controls_tuple):
     else:
         if "refresh_image_path" in settings_to_save: del settings_to_save["refresh_image_path"]
 
-    save_settings_to_file(UNLOAD_SAVE_FILENAME, *settings_to_save.values())
+    # CHANGED: Pass the settings_to_save dictionary directly.
+    save_settings_to_file(UNLOAD_SAVE_FILENAME, settings_to_save)
 
-def load_workspace():
-    """Opens a file dialog to load a workspace from a JSON file."""
-    root = tk.Tk(); root.withdraw()
-    file_path = filedialog.askopenfilename(filetypes=[("JSON files", "*.json")])
-    root.destroy()
-    return load_settings_from_file(file_path) if file_path else [gr.update()] * len(shared_state.ALL_TASK_UI_KEYS)
+# CHANGED: load_workspace now accepts an uploaded file object.
+def load_workspace(uploaded_file):
+    """Loads a workspace from an uploaded JSON file."""
+    if uploaded_file is None or not hasattr(uploaded_file, 'name') or not os.path.exists(uploaded_file.name):
+        gr.Warning("No valid file selected or uploaded.")
+        # Return updates that effectively do nothing or reset to defaults if needed
+        return [gr.update()] * len(shared_state.ALL_TASK_UI_KEYS)
+
+    # Call the core load logic with the path of the uploaded file
+    # Gradio's UploadButton provides a temporary file path in `uploaded_file.name`.
+    return load_settings_from_file(uploaded_file.name)
 
 def load_workspace_on_start():
     """Loads settings on app startup."""
@@ -206,9 +232,15 @@ def load_workspace_on_start():
 
     if settings_file:
         print(f"Loading workspace from {settings_file}")
+        # When loading settings from disk, we pass the file path and let it handle reading.
         ui_updates = load_settings_from_file(settings_file)
         if image_path_to_load: gr.Info("Restoring UI state and image from previous session.")
-        if settings_file == UNLOAD_SAVE_FILENAME: os.remove(UNLOAD_SAVE_FILENAME)
+        # Ensure the temporary unload save file is removed after use
+        if settings_file == UNLOAD_SAVE_FILENAME:
+            try:
+                os.remove(UNLOAD_SAVE_FILENAME)
+            except OSError as e:
+                print(f"Error deleting temporary unload save file '{UNLOAD_SAVE_FILENAME}': {e}")
         return [image_path_to_load] + ui_updates
 
     print("No workspace file found. Using default values.")
@@ -227,7 +259,10 @@ def load_image_from_path(image_path):
             gr.Warning(f"Could not restore image from previous session: {e}")
             return gr.update(value=None, visible=False)
         finally:
-            try: os.remove(image_path)
-            except OSError as e: print(f"Error deleting temporary refresh image '{image_path}': {e}")
+            # Only remove if it's explicitly marked as a temporary refresh image
+            # This check prevents accidental deletion of user's own image files
+            if REFRESH_IMAGE_FILENAME in os.path.basename(image_path):
+                try: os.remove(image_path)
+                except OSError as e: print(f"Error deleting temporary refresh image '{image_path}': {e}")
 
     return gr.update(value=None, visible=False)

@@ -74,3 +74,34 @@ def prepare_image_for_download(pil_image, ui_keys, *creative_values):
         image_with_metadata.save(tmp_file.name, "PNG")
         gr.Info("Image with current settings prepared for download.")
         return gr.update(value=tmp_file.name)
+
+def update_button_states(app_state, input_image_pil, queue_df_data):
+    """
+    Updates the 'Add Task' and 'Process Queue' button states based on input image
+    and queue content.
+    """
+    queue_state = queue_manager.get_queue_state(app_state) # Uses imported helper
+    is_processing = queue_state.get("processing", False)
+    queue_has_tasks = len(queue_state["queue"]) > 0
+
+    # Add Task to Queue button
+    add_task_variant = "primary" if input_image_pil is not None else "secondary"
+
+    # Process Queue button
+    process_queue_interactive = False
+    process_queue_variant = "secondary" # Default for empty/disabled
+
+    if is_processing:
+        process_queue_interactive = False
+        process_queue_variant = "primary" # Already running, so it's "active" color
+    elif queue_has_tasks:
+        process_queue_interactive = True
+        process_queue_variant = "primary" # Tasks present, ready to process
+    else:
+        process_queue_interactive = False
+        process_queue_variant = "secondary" # No tasks, disabled
+
+    return (
+        gr.update(variant=add_task_variant),
+        gr.update(interactive=process_queue_interactive, variant=process_queue_variant)
+    )

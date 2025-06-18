@@ -172,16 +172,17 @@ def save_queue_to_zip(state_dict_gr_state):
                         try: Image.fromarray(input_image_np_data).save(img_save_path, "PNG"); image_paths_in_zip[img_hash] = img_filename_in_zip; saved_files_count +=1
                         except Exception as e: print(f"Error saving image for task {task_id_s} in zip: {e}")
                 queue_manifest.append(manifest_entry)
-            manifest_path = os.path.join(tmpdir, "queue_manifest.json");
+            manifest_path = os.path.join(tmpdir, shared_state.QUEUE_STATE_JSON_IN_ZIP); # Changed 'queue_manifest.json' to shared_state.QUEUE_STATE_JSON_IN_ZIP
             with open(manifest_path, 'w', encoding='utf-8') as f: json.dump(queue_manifest, f, indent=4)
             with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zf:
-                zf.write(manifest_path, arcname="queue_manifest.json")
+                zf.write(manifest_path, arcname=shared_state.QUEUE_STATE_JSON_IN_ZIP) # Changed 'queue_manifest.json' to shared_state.QUEUE_STATE_JSON_IN_ZIP
                 for img_hash, img_filename_rel in image_paths_in_zip.items(): zf.write(os.path.join(tmpdir, img_filename_rel), arcname=img_filename_rel)
             zip_buffer.seek(0); zip_base64 = base64.b64encode(zip_buffer.getvalue()).decode('utf-8')
             gr.Info(f"Queue with {len(queue)} tasks ({saved_files_count} images) prepared for download.")
             return state_dict_gr_state, zip_base64
     except Exception as e: print(f"Error creating zip for queue: {e}"); traceback.print_exc(); gr.Warning("Failed to create zip data."); return state_dict_gr_state, ""
     finally: zip_buffer.close()
+
 
 def load_queue_from_zip(state_dict_gr_state, uploaded_zip_file_obj):
     if not uploaded_zip_file_obj or not hasattr(uploaded_zip_file_obj, 'name') or not Path(uploaded_zip_file_obj.name).is_file(): gr.Warning("No valid file selected."); return state_dict_gr_state, update_queue_df_display(get_queue_state(state_dict_gr_state)) # Uses imported helper
@@ -353,11 +354,55 @@ def process_task_queue_main_loop(state_dict_gr_state):
             elif flag == 'aborted': current_task_obj["status"] = "aborted"; task_completed_successfully = False; break
             elif flag == 'error': _, error_message_str = data_from_worker; gr.Warning(f"Task {current_task_id} Error: {error_message_str}"); current_task_obj["status"] = "error"; current_task_obj["error_message"] = str(error_message_str)[:100]; task_completed_successfully = False; break
             elif flag == 'end': _, success_bool, final_video_path = data_from_worker; task_completed_successfully = success_bool; last_known_output_filename = final_video_path if success_bool else last_known_output_filename; current_task_obj["status"] = "done" if success_bool else "error"; break
-        with shared_state.queue_lock:
-            if queue_state["queue"] and queue_state["queue"][0]["id"] == current_task_id: queue_state["queue"].pop(0)
+        
+        # This popped the queue state too early for autosave to work with a processing task's details
+        # with shared_state.queue_lock:
+        #    if queue_state["queue"] and queue_state["queue"][0]["id"] == current_task_id: queue_state["queue"].pop(0)
+        
         state_dict_gr_state["last_completed_video_path"] = last_known_output_filename if task_completed_successfully else None
         final_desc = f"Task {current_task_id} {'completed' if task_completed_successfully else 'finished with issues'}."
         yield (state_dict_gr_state, update_queue_df_display(queue_state), gr.update(value=state_dict_gr_state["last_completed_video_path"]), gr.update(visible=False), gr.update(value=final_desc), gr.update(value=""), gr.update(interactive=False), gr.update(interactive=True), gr.update(interactive=True)) # Uses imported helper
+
+        # Instead, the task remains in the queue with its updated status.
+        # It will only be removed by explicit user action (clear, remove)
+        # or if the loop truly completes all tasks.
+
+        state_dict_gr_state["last_completed_video_path"] = last_known_output_filename if task_completed_successfully else None
+        final_desc = f"Task {current_task_id} {'completed' if task_completed_successfully else 'finished with issues'}."
+        yield (state_dict_gr_state, update_queue_df_display(queue_state), gr.update(value=state_dict_gr_state["last_completed_video_path"]), gr.update(visible=False), gr.update(value=final_desc), gr.update(value=""), gr.update(interactive=False), gr.update(interactive=True), gr.update(interactive=True)) # Uses imported helper
+        
+        # Important: If you want the *next* task to start automatically,
+        # the loop must *continue*. If the task is processed and finished,
+        # the `current_task_obj` should be marked as "done" and the loop
+        # should move to the next task.
+        # If the task is to be completely *removed* from the queue list
+        # *after completion*, then the pop should happen here, but only
+        # for 'done' tasks, and still allow 'aborted'/'error' tasks to remain.
+
+        # Let's adjust the pop logic: pop only if successful completion
+        # and if the user wants auto-removal. For autosave on abort/error,
+        # the task *must* remain in the queue.
+
+        # A better approach: The task *remains* in the queue list with its status (`done`, `aborted`, `error`).
+        # The DataFrame display will reflect this status.
+        # The user can then manually clear 'done' or 'aborted' tasks from the UI.
+        # This aligns with the request to save the queue with the currently running (or interrupted) process.
+        
+        # The loop condition `while queue_state["queue"] and not shared_state.interrupt_flag.is_set():`
+        # will naturally move to the next task if the `current_task_obj` is updated
+        # and the UI display correctly handles showing only "pending" as actionable,
+        # or it should explicitly pop the *first* task only if its status is 'done'.
+
+        with shared_state.queue_lock:
+            # ONLY POP THE TASK IF IT'S DONE AND WE'RE MOVING TO THE NEXT ONE AUTOMATICALLY
+            # This makes the queue persistent for aborted/errored tasks.
+            if current_task_obj["status"] == "done":
+                 if queue_state["queue"] and queue_state["queue"][0]["id"] == current_task_id:
+                    queue_state["queue"].pop(0)
+                    # Also, if a task is completed, we should probably clear the interrupt flag
+                    # so the next task can start, unless a full abort was requested.
+                    shared_state.interrupt_flag.clear() # Clear flag for next task if previous completed normally
+                    shared_state.abort_state.update({'level': 0, 'last_click_time': 0}) # Reset abort state
         if shared_state.interrupt_flag.is_set(): gr.Info("Queue processing halted by user."); break
     queue_state["processing"] = False; state_dict_gr_state["active_output_stream_queue"] = None
     final_status_msg = "All tasks processed." if not shared_state.interrupt_flag.is_set() else "Queue processing aborted."
