@@ -105,9 +105,9 @@ def remove_task_from_queue(state_dict_gr_state, selected_indices_list: list):
 
 def handle_queue_action_on_select(evt: gr.SelectData, state_dict_gr_state, *ui_param_controls_tuple):
     if evt.index is None or evt.value not in ["↑", "↓", "✖", "✎"]:
-        return [state_dict_gr_state, update_queue_df_display(get_queue_state(state_dict_gr_state))] + [gr.update()] * (len(shared_state.ALL_TASK_UI_KEYS) + 4) # Uses imported helper
+        return [state_dict_gr_state, update_queue_df_display(get_queue_state(state_dict_gr_state))] + [gr.update()] * (1 + len(shared_state.ALL_TASK_UI_KEYS) + 4) # Uses imported helper
     row_index, col_index = evt.index; button_clicked = evt.value; queue_state = get_queue_state(state_dict_gr_state); queue = queue_state["queue"]; processing = queue_state.get("processing", False) # Uses imported helper
-    outputs_list = [state_dict_gr_state, update_queue_df_display(queue_state)] + [gr.update()] * (len(shared_state.ALL_TASK_UI_KEYS) + 4) # Uses imported helper
+    outputs_list = [state_dict_gr_state, update_queue_df_display(queue_state)] + [gr.update()] * (1 + len(shared_state.ALL_TASK_UI_KEYS) + 4) # Uses imported helper
     if button_clicked == "↑":
         if processing and row_index == 0: gr.Warning("Cannot move processing task."); return outputs_list
         new_state, new_df = move_task_in_queue(state_dict_gr_state, 'up', [[row_index, col_index]]); outputs_list[0], outputs_list[1] = new_state, new_df

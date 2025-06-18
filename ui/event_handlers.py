@@ -6,6 +6,8 @@ from PIL import Image
 
 from . import metadata as metadata_manager
 from . import shared_state
+from . import queue as queue_manager
+from . import workspace as workspace_manager
 
 def safe_shutdown_action(app_state, *ui_values):
     """

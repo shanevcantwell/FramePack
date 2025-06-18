@@ -92,6 +92,8 @@ with block:
         ui_components[ctrl_key].change(fn=event_handlers.ui_update_total_segments, inputs=[ui_components['total_second_length_ui'], ui_components['latent_window_size_ui']], outputs=[ui_components['total_segments_display_ui']])
     ui_components['reset_ui_button'].click(fn=workspace_manager.save_ui_and_image_for_refresh, inputs=task_defining_ui_inputs, outputs=None).then(fn=None, inputs=None, outputs=None, js="() => { setTimeout(() => { window.location.reload(); }, 500); }")
     ui_components['relaunch_button'].click(fn=workspace_manager.save_ui_and_image_for_refresh, inputs=task_defining_ui_inputs, outputs=None).then(fn=None, inputs=None, outputs=None, js="() => { setTimeout(() => { window.location.reload(); }, 500); }")
+    shutdown_inputs = [ui_components['app_state']] + task_defining_ui_inputs
+    ui_components['shutdown_button'].click(fn=event_handlers.safe_shutdown_action, inputs=shutdown_inputs, outputs=None)
 
     # --- Application Load/Startup Events ---
     refresh_image_path_state = gr.State(None)

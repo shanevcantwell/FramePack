@@ -55,7 +55,6 @@ def create_ui():
                 components['input_image_display_ui'] = gr.Image(type="pil", label="Current Input Image", interactive=False, visible=False, height=220, show_download_button=False)
 
                 components['add_task_button'] = gr.Button("Add to Queue", variant="secondary")
-                # CHANGED: Moved Clear and Download buttons into their own row for better layout.
                 with gr.Row():
                     components['clear_image_button_ui'] = gr.Button("Clear Image", variant="secondary", visible=False)
                     components['download_image_button_ui'] = gr.Button("Download", variant="secondary", visible=False)
@@ -67,11 +66,14 @@ def create_ui():
             with gr.Column(scale=2, min_width=600):
                 components['prompt_ui'] = gr.Textbox(label="Prompt", lines=10)
                 components['n_prompt_ui'] = gr.Textbox(label="Negative Prompt", lines=4)
+                # MOVED: Video Length and Seed are now here for better workflow.
+                with gr.Row():
+                    components['total_second_length_ui'] = gr.Slider(label="Video Length (s)", minimum=0.1, maximum=120, value=5.0, step=0.1)
+                    components['seed_ui'] = gr.Number(label="Seed", value=-1, precision=0)
 
         with gr.Group():
             components['image_downloader_ui'] = gr.File(visible=False)
             gr.Markdown("## Task Queue")
-            # The DataFrame is now always visible to create a stable layout.
             components['queue_df_display_ui'] = gr.DataFrame(headers=["ID", "Status", "Prompt", "Length", "Steps", "Input", "↑", "↓", "✖", "✎"], datatype=["number","markdown","markdown","str","number","markdown","markdown","markdown","markdown","markdown"], col_count=(10,"fixed"), interactive=False, elem_id="queue_df")
             with gr.Row():
                 components['save_queue_zip_b64_output'] = gr.Text(visible=False)
@@ -81,9 +83,7 @@ def create_ui():
 
         with gr.Row(equal_height=False):
             with gr.Column(scale=1):
-                with gr.Row():
-                    components['total_second_length_ui'] = gr.Slider(label="Video Length (s)", minimum=0.1, maximum=120, value=5.0, step=0.1)
-                    components['seed_ui'] = gr.Number(label="Seed", value=-1, precision=0)
+                # REMOVED: Video Length and Seed were here.
                 with gr.Accordion("Advanced Settings", open=False):
                     components['total_segments_display_ui'] = gr.Markdown("Calculated Total Segments: N/A")
                     components['preview_frequency_ui'] = gr.Slider(label="Preview Freq.", minimum=0, maximum=100, value=5, step=1)
