@@ -80,7 +80,7 @@ def create_ui():
                 components['add_task_button'] = gr.Button("Add to Queue", variant="secondary")
                 with gr.Row():
                     components['clear_image_button_ui'] = gr.Button("Clear Image", variant="secondary", visible=False)
-                    components['download_image_button_ui'] = gr.Button("Download", variant="secondary", visible=False)
+                    components['download_image_button_ui'] = gr.DownloadButton("Download Image", variant="secondary", visible=False) # Changed to DownloadButton
 
                 components['process_queue_button'] = gr.Button("▶️ Process Queue", variant="primary")
                 components['abort_task_button'] = gr.Button("⏹️ Abort", variant="stop", interactive=True)
@@ -99,7 +99,6 @@ def create_ui():
             gr.Markdown("## Task Queue")
             components['queue_df_display_ui'] = gr.DataFrame(headers=["ID", "Status", "Prompt", "Length", "Steps", "Input", "↑", "↓", "✖", "✎"], datatype=["number","markdown","markdown","str","number","markdown","markdown","markdown","markdown","markdown"], col_count=(10,"fixed"), interactive=False, elem_id="queue_df")
             with gr.Row():
-                components['save_queue_zip_b64_output'] = gr.Text(visible=False)
                 components['save_queue_button_ui'] = gr.DownloadButton("Save Queue", size="sm")
                 components['load_queue_button_ui'] = gr.UploadButton("Load Queue", file_types=[".zip"], size="sm")
                 components['clear_queue_button_ui'] = gr.Button("Clear Pending", size="sm", variant="stop")

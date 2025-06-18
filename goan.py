@@ -1,11 +1,11 @@
-# goan.py (Corrected)
+# goan.py (Complete and Consolidated)
 # Main application orchestrator for the goan video generation UI.
 
 # --- Python Standard Library Imports ---
 import os
 import atexit
 import gradio as gr
-import tempfile
+import tempfile # ADDED: Import tempfile for creating temporary files for downloads
 
 # --- Local Application Imports ---
 from core import args as args_manager
@@ -41,7 +41,7 @@ process_q_outputs = [
     ui_components['current_task_preview_image_ui'],
     ui_components['current_task_progress_desc_ui'],
     ui_components['current_task_progress_bar_ui'],
-    ui_components['process_queue_button'], # Still needs to be in this list for its interactive/variant updates
+    ui_components['process_queue_button'],
     ui_components['abort_task_button'],
     ui_components['clear_queue_button_ui']
 ]
@@ -51,29 +51,23 @@ autoload_outputs = [
     ui_components['last_finished_video_ui']
 ]
 
-# Outputs for a full UI refresh without page reload
-all_ui_refresh_outputs = (
-    [ui_components['input_image_display_ui']] +
-    full_workspace_ui_components +
-    [ui_components['clear_image_button_ui'], ui_components['download_image_button_ui'],
-     ui_components['image_file_input_ui'], ui_components['total_segments_display_ui']]
-)
-
 
 # --- Event Wiring ---
 print("Wiring UI events...")
 with block:
     # --- Workspace Manager Events ---
+    # Trigger save_workspace, which returns the temp file path for download.
+    # Then, use a JS function to click the hidden download link associated with workspace_downloader_ui.
     (ui_components['save_workspace_button'].click(
         fn=workspace_manager.save_workspace,
         inputs=full_workspace_ui_components,
-        outputs=ui_components['workspace_downloader_ui']
+        outputs=ui_components['workspace_downloader_ui'] # Outputs the file path to the hidden gr.File
     ).then(
-        fn=None,
-        inputs=[ui_components['workspace_downloader_ui']],
+        fn=None, # No Python function needed for the JS part
+        inputs=[ui_components['workspace_downloader_ui']], # Pass the component itself to JS to access its inner download link
         outputs=None,
         js="""
-        (fileComponentValue) => {
+        (fileComponentValue) => { // fileComponentValue is the filepath returned by save_workspace
             const downloadContainer = document.getElementById('workspace_downloader_hidden_file');
             if (downloadContainer) {
                 const downloadLink = downloadContainer.querySelector('a[download]');
@@ -89,12 +83,13 @@ with block:
         """
     ))
 
+    # Load Workspace button uses .upload and takes itself as input.
     ui_components['load_workspace_button'].upload(
         fn=workspace_manager.load_workspace,
-        inputs=[ui_components['load_workspace_button']],
-        outputs=full_workspace_ui_components
+        inputs=[ui_components['load_workspace_button']], # The UploadButton itself is the input (file object)
+        outputs=full_workspace_ui_components # Updates all the UI controls with loaded settings
     ).then(
-        # NEW: Update button states after loading workspace
+        # Update button states after loading workspace
         fn=event_handlers.update_button_states,
         inputs=[ui_components['app_state'], ui_components['input_image_display_ui'], ui_components['queue_df_display_ui']],
         outputs=[ui_components['add_task_button'], ui_components['process_queue_button']]
@@ -122,7 +117,7 @@ with block:
                  ui_components['input_image_display_ui'], ui_components['metadata_prompt_preview_ui'],
                  ui_components['extracted_metadata_state'], ui_components['modal_trigger_box']]
     ).then(
-        # NEW: Update button states after image upload
+        # Update button states after image upload
         fn=event_handlers.update_button_states,
         inputs=[ui_components['app_state'], ui_components['input_image_display_ui'], ui_components['queue_df_display_ui']],
         outputs=[ui_components['add_task_button'], ui_components['process_queue_button']]
@@ -133,13 +128,26 @@ with block:
         inputs=None,
         outputs=clear_button_outputs
     ).then(
-        # NEW: Update button states after image clear
+        # Update button states after image clear
         fn=event_handlers.update_button_states,
         inputs=[ui_components['app_state'], ui_components['input_image_display_ui'], ui_components['queue_df_display_ui']],
         outputs=[ui_components['add_task_button'], ui_components['process_queue_button']]
     ))
 
-    (ui_components['download_image_button_ui'].click(fn=event_handlers.prepare_image_for_download, inputs=[ui_components['input_image_display_ui'], gr.State(shared_state.CREATIVE_UI_KEYS)] + creative_ui_components, outputs=[ui_components['image_downloader_ui']]).then(fn=None, inputs=None, outputs=None, js="""() => { const all_buttons = document.querySelectorAll('.gradio-container button'); const download_button = Array.from(all_buttons).find(el => el.innerText === 'Download'); if (download_button) { const new_download_button_parent = download_button.parentElement.parentElement; const link = new_download_button_parent.querySelector('a[download]'); if(link) { link.click(); } } }"""))
+    # CHANGED: Simplified download_image_button_ui click event for DownloadButton
+    # It now directly triggers prepare_image_for_download, which returns the filepath.
+    # The DownloadButton handles the download and Content-Disposition header itself.
+    ui_components['download_image_button_ui'].click(
+        fn=event_handlers.prepare_image_for_download,
+        inputs=[
+            ui_components['input_image_display_ui'],
+            gr.State(shared_state.CREATIVE_UI_KEYS) # Pass the list of UI keys
+        ] + creative_ui_components, # Pass the actual values of creative UI components
+        outputs=ui_components['download_image_button_ui'], # Output the filepath to the DownloadButton itself
+        show_progress=True, # Show progress during file preparation
+        api_name="download_image_with_metadata" # Optional: For API access if needed
+    )
+
     ui_components['modal_trigger_box'].change(fn=lambda x: gr.update(visible=True) if x else gr.update(visible=False), inputs=[ui_components['modal_trigger_box']], outputs=[ui_components['metadata_modal']], api_name=False, queue=False)
     (ui_components['confirm_metadata_btn'].click(fn=metadata_manager.ui_load_params_from_image_metadata, inputs=[ui_components['extracted_metadata_state']], outputs=creative_ui_components).then(fn=lambda: None, inputs=None, outputs=[ui_components['modal_trigger_box']]))
     ui_components['cancel_metadata_btn'].click(fn=lambda: None, inputs=None, outputs=[ui_components['modal_trigger_box']])
@@ -151,7 +159,7 @@ with block:
         inputs=[ui_components['app_state']] + task_defining_ui_inputs,
         outputs=[ui_components['app_state'], ui_components['queue_df_display_ui'], ui_components['add_task_button'], ui_components['cancel_edit_task_button']]
     ).then(
-        # NEW: Update button states after adding a task
+        # Update button states after adding a task
         fn=event_handlers.update_button_states,
         inputs=[ui_components['app_state'], ui_components['input_image_display_ui'], ui_components['queue_df_display_ui']],
         outputs=[ui_components['add_task_button'], ui_components['process_queue_button']]
@@ -160,9 +168,9 @@ with block:
     (ui_components['process_queue_button'].click(
         fn=queue_manager.process_task_queue_main_loop,
         inputs=[ui_components['app_state']],
-        outputs=process_q_outputs # This already includes process_queue_button for interactive/variant updates
+        outputs=process_q_outputs
     ).then(
-        # NEW: Ensure button states are correctly set after processing concludes (success/abort/error)
+        # Ensure button states are correctly set after processing concludes (success/abort/error)
         fn=event_handlers.update_button_states,
         inputs=[ui_components['app_state'], ui_components['input_image_display_ui'], ui_components['queue_df_display_ui']],
         outputs=[ui_components['add_task_button'], ui_components['process_queue_button']]
@@ -174,7 +182,7 @@ with block:
         inputs=[ui_components['app_state']],
         outputs=[ui_components['app_state'], ui_components['abort_task_button']]
     ).then(
-        # NEW: Update button states after aborting a task
+        # Update button states after aborting a task
         fn=event_handlers.update_button_states,
         inputs=[ui_components['app_state'], ui_components['input_image_display_ui'], ui_components['queue_df_display_ui']],
         outputs=[ui_components['add_task_button'], ui_components['process_queue_button']]
@@ -185,17 +193,22 @@ with block:
         inputs=[ui_components['app_state']],
         outputs=[ui_components['app_state'], ui_components['queue_df_display_ui']]
     ).then(
-        # NEW: Update button states after clearing the queue
+        # Update button states after clearing the queue
         fn=event_handlers.update_button_states,
         inputs=[ui_components['app_state'], ui_components['input_image_display_ui'], ui_components['queue_df_display_ui']],
         outputs=[ui_components['add_task_button'], ui_components['process_queue_button']]
     ))
 
-    ui_components['save_queue_button_ui'].click(fn=queue_manager.save_queue_to_zip, inputs=[ui_components['app_state']], outputs=[ui_components['save_queue_zip_b64_output']]).then(fn=None, inputs=[ui_components['save_queue_zip_b64_output']], outputs=None, js="""(b64) => { if(!b64) return; const blob = new Blob([Uint8Array.from(atob(b64), c => c.charCodeAt(0))], {type: 'application/zip'}); const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href=url; a.download='goan_queue.zip'; a.click(); URL.revokeObjectURL(url); }""")
-    ui_components['load_queue_button_ui'].upload(fn=queue_manager.load_queue_from_zip, inputs=[ui_components['app_state'], ui_components['load_queue_button_ui']], outputs=[ui_components['app_state'], ui_components['queue_df_display_ui']]) # Autoload state updates here, followed by button updates via new chain below
-    ui_components['queue_df_display_ui'].select(fn=queue_manager.handle_queue_action_on_select, inputs=[ui_components['app_state']] + task_defining_ui_inputs, outputs=select_q_outputs) # Still needs to update buttons for move/remove/edit actions
-
-    # NEW: Chain update_button_states after queue_df_display_ui changes from selection actions
+        # Simplified save_queue_button_ui click event for DownloadButton
+    ui_components['save_queue_button_ui'].click(
+        fn=queue_manager.save_queue_to_zip,
+        inputs=[ui_components['app_state']],
+        outputs=[ui_components['app_state'], ui_components['save_queue_button_ui']], # Output app_state and the DownloadButton itself
+        show_progress=True
+    )
+    
+    ui_components['load_queue_button_ui'].upload(fn=queue_manager.load_queue_from_zip, inputs=[ui_components['app_state'], ui_components['load_queue_button_ui']], outputs=[ui_components['app_state'], ui_components['queue_df_display_ui']])
+    # Autoload state updates here, followed by button updates via new chain below
     (ui_components['queue_df_display_ui'].select(
         fn=queue_manager.handle_queue_action_on_select,
         inputs=[ui_components['app_state']] + task_defining_ui_inputs,
@@ -212,7 +225,6 @@ with block:
     for ctrl_key in ['total_second_length_ui', 'latent_window_size_ui']:
         ui_components[ctrl_key].change(fn=event_handlers.ui_update_total_segments, inputs=[ui_components['total_second_length_ui'], ui_components['latent_window_size_ui']], outputs=[ui_components['total_segments_display_ui']])
 
-    # 'Save & Refresh UI' now performs a refresh of UI components without reloading the page.
     ui_components['reset_ui_button'].click(
         fn=workspace_manager.save_ui_and_image_for_refresh,
         inputs=task_defining_ui_inputs,
@@ -236,14 +248,12 @@ with block:
         inputs=[ui_components['total_second_length_ui'], ui_components['latent_window_size_ui']],
         outputs=[ui_components['total_segments_display_ui']]
     ).then(
-        # NEW: Update button states after UI refresh completes
         fn=event_handlers.update_button_states,
         inputs=[ui_components['app_state'], ui_components['input_image_display_ui'], ui_components['queue_df_display_ui']],
         outputs=[ui_components['add_task_button'], ui_components['process_queue_button']]
     )
 
 
-    # The relaunch button still forces a reload as its primary function
     ui_components['relaunch_button'].click(
         fn=workspace_manager.save_ui_and_image_for_refresh,
         inputs=task_defining_ui_inputs,
@@ -252,7 +262,7 @@ with block:
         fn=None,
         inputs=None,
         outputs=None,
-        js="() => { setTimeout(() => { window.location.reload(); }, 500); }"
+        js="""() => { setTimeout(() => { window.location.reload(); }, 500); }"""
     )
     shutdown_inputs = [ui_components['app_state']] + task_defining_ui_inputs
     ui_components['shutdown_button'].click(fn=event_handlers.safe_shutdown_action, inputs=shutdown_inputs, outputs=None)
@@ -263,12 +273,11 @@ with block:
         .then(fn=workspace_manager.load_image_from_path, inputs=[refresh_image_path_state], outputs=[ui_components['input_image_display_ui']])
         .then(fn=lambda: gr.update(visible=not shared_state.system_info.get('is_legacy_gpu', False)), inputs=None, outputs=[ui_components['use_fp32_transformer_output_checkbox_ui']])
         .then(fn=lambda img: gr.update(visible=img is not None), inputs=[ui_components['input_image_display_ui']], outputs=[ui_components['clear_image_button_ui']])
-        .then(fn=lambda img: gr.update(visible=img is not None), inputs=[ui_components['input_image_display_ui']], outputs=[ui_components['download_image_button_ui']])
+        .then(fn=lambda img: gr.update(visible=img is not None), inputs=[ui_components['input_image_display_ui']], outputs=[ui_components['download_image_button_ui']] ) # download_image_button_ui visibility
         .then(fn=lambda img: gr.update(visible=img is None), inputs=[ui_components['input_image_display_ui']], outputs=[ui_components['image_file_input_ui']])
         .then(fn=queue_manager.autoload_queue_on_start_action, inputs=[ui_components['app_state']], outputs=autoload_outputs)
         .then(lambda s_val: shared_state.global_state_for_autosave.update(s_val), inputs=[ui_components['app_state']], outputs=None)
         .then(fn=event_handlers.ui_update_total_segments, inputs=[ui_components['total_second_length_ui'], ui_components['latent_window_size_ui']], outputs=[ui_components['total_segments_display_ui']])
-        # NEW: Update button states on initial load after everything else has settled
         .then(
             fn=event_handlers.update_button_states,
             inputs=[ui_components['app_state'], ui_components['input_image_display_ui'], ui_components['queue_df_display_ui']],
@@ -282,6 +291,7 @@ with block:
 # --- Application Launch ---
 if __name__ == "__main__":
     print("Starting goan FramePack UI...")
+
     initial_output_folder_path = workspace_manager.get_initial_output_folder_from_settings()
     expanded_outputs_folder_for_launch = os.path.abspath(initial_output_folder_path)
     final_allowed_paths = [expanded_outputs_folder_for_launch]
