@@ -15,6 +15,7 @@ from ui import (
     metadata as metadata_manager,
     queue as queue_manager,
     workspace as workspace_manager,
+    lora as lora_manager, # ADDED: Import the new LoRA manager
     event_handlers,
     shared_state
 )
@@ -30,10 +31,21 @@ gr.processing_utils.video_is_playable = lambda video_filepath: True
 ui_components = layout_manager.create_ui()
 block = ui_components['block']
 
+lora_ui_controls = []
+for i in range(5):
+    lora_ui_controls.extend([
+        ui_components[f'lora_row_{i}'],
+        ui_components[f'lora_name_{i}'],
+        ui_components[f'lora_weight_{i}'],
+        ui_components[f'lora_targets_{i}']
+    ])
+
+# The following component lists are now correctly defined after all components exist.
 creative_ui_components = [ui_components[key] for key in shared_state.CREATIVE_UI_KEYS]
 full_workspace_ui_components = [ui_components[key] for key in shared_state.ALL_TASK_UI_KEYS]
 task_defining_ui_inputs = [ui_components['input_image_display_ui']] + full_workspace_ui_components
 
+select_q_outputs = ([ui_components[k] for k in ['app_state', 'queue_df_display_ui', 'input_image_display_ui']] + full_workspace_ui_components + [ui_components[k] for k in ['clear_image_button_ui', 'download_image_button_ui', 'add_task_button', 'cancel_edit_task_button']])
 process_q_outputs = [
     ui_components['app_state'],
     ui_components['queue_df_display_ui'],
@@ -55,6 +67,19 @@ autoload_outputs = [
 # --- Event Wiring ---
 print("Wiring UI events...")
 with block:
+
+    # --- LoRA Manager Events ---
+    # This event populates the static UI slots when a LoRA is uploaded.
+    ui_components['lora_upload_button_ui'].upload(
+        fn=lora_manager.handle_lora_upload,
+        inputs=[
+            ui_components['app_state'],
+            ui_components['lora_upload_button_ui']
+        ],
+        # The outputs are now the app_state and all the static LoRA controls
+        outputs=[ui_components['app_state'], ui_components['lora_name_state']] + lora_ui_controls
+    )
+
     # --- Workspace Manager Events ---
     # Trigger save_workspace, which returns the temp file path for download.
     # Then, use a JS function to click the hidden download link associated with workspace_downloader_ui.
@@ -141,6 +166,7 @@ with block:
         fn=event_handlers.prepare_image_for_download,
         inputs=[
             ui_components['input_image_display_ui'],
+            ui_components['app_state'], # ADDED: Pass the main app_state
             gr.State(shared_state.CREATIVE_UI_KEYS) # Pass the list of UI keys
         ] + creative_ui_components, # Pass the actual values of creative UI components
         outputs=ui_components['download_image_button_ui'], # Output the filepath to the DownloadButton itself
@@ -153,24 +179,12 @@ with block:
     ui_components['cancel_metadata_btn'].click(fn=lambda: None, inputs=None, outputs=[ui_components['modal_trigger_box']])
 
     # --- Queue Manager Events ---
-    select_q_outputs = ([ui_components[k] for k in ['app_state', 'queue_df_display_ui', 'input_image_display_ui']] + full_workspace_ui_components + [ui_components[k] for k in ['clear_image_button_ui', 'download_image_button_ui', 'add_task_button', 'cancel_edit_task_button']])
-    (ui_components['add_task_button'].click(
-        fn=queue_manager.add_or_update_task_in_queue,
-        inputs=[ui_components['app_state']] + task_defining_ui_inputs,
-        outputs=[ui_components['app_state'], ui_components['queue_df_display_ui'], ui_components['add_task_button'], ui_components['cancel_edit_task_button']]
-    ).then(
-        # Update button states after adding a task
-        fn=event_handlers.update_button_states,
-        inputs=[ui_components['app_state'], ui_components['input_image_display_ui'], ui_components['queue_df_display_ui']],
-        outputs=[ui_components['add_task_button'], ui_components['process_queue_button']]
-    ))
-
+    # CORRECTED: The Process Queue button now correctly takes the list of LoRA controls as inputs.
     (ui_components['process_queue_button'].click(
         fn=queue_manager.process_task_queue_main_loop,
-        inputs=[ui_components['app_state']],
+        inputs=[ui_components['app_state']] + lora_ui_controls,
         outputs=process_q_outputs
     ).then(
-        # Ensure button states are correctly set after processing concludes (success/abort/error)
         fn=event_handlers.update_button_states,
         inputs=[ui_components['app_state'], ui_components['input_image_display_ui'], ui_components['queue_df_display_ui']],
         outputs=[ui_components['add_task_button'], ui_components['process_queue_button']]
@@ -299,6 +313,9 @@ if __name__ == "__main__":
         custom_paths = [os.path.abspath(os.path.expanduser(p.strip())) for p in args.allowed_output_paths.split(',') if p.strip()]
         final_allowed_paths.extend(custom_paths)
     final_allowed_paths = list(set(final_allowed_paths))
+    
+    # ADDED: The new loras directory to the allowed paths for Gradio
+    final_allowed_paths.append(lora_manager.LORA_DIR)
 
     print(f"Gradio allowed paths: {final_allowed_paths}")
     block.launch(server_name=args.server, server_port=args.port, share=args.share, inbrowser=args.inbrowser, allowed_paths=final_allowed_paths)

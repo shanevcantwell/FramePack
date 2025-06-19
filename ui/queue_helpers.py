@@ -1,4 +1,4 @@
-﻿# ui/queue_helpers.py
+﻿# ui/queue_helpers.py (Full updated file)
 # Contains helper functions for queue state management and UI data formatting.
 
 import gradio as gr
@@ -119,3 +119,76 @@ def remove_task_from_queue(state_dict_gr_state, task_index: int):
             gr.Warning("Invalid index for removal.")
             
     return state_dict_gr_state, removed_task_id
+
+# --- NEW FUNCTION ADDED HERE ---
+def apply_loras_from_state(app_state, *lora_control_values):
+    """
+    Parses LoRA settings from the static UI slots and applies them to the models.
+    """
+    lora_state = app_state.get('lora_state', {})
+    loaded_loras = lora_state.get('loaded_loras', {})
+
+    # --- Update the main state with the live values from the UI ---
+    value_iterator = iter(lora_control_values)
+    # The values come in groups of 4: row, name, weight, targets
+    for i in range(5): 
+        try:
+            _row_visibility = next(value_iterator) # We don't need the row visibility
+            name = next(value_iterator)
+            weight = next(value_iterator)
+            targets = next(value_iterator)
+
+            # If a name exists in this slot, update its data in the master state
+            if name and name in loaded_loras:
+                loaded_loras[name]['weight'] = weight
+                loaded_loras[name]['target_models'] = targets
+        except StopIteration:
+            break # Stop if we run out of values for any reason
+
+    # --- The rest of the function applies the now-updated state ---
+    model_map = {
+        "transformer": shared_state.models.get('transformer'),
+        "text_encoder": shared_state.models.get('text_encoder'),
+        "text_encoder_2": shared_state.models.get('text_encoder_2')
+    }
+    models_to_affect = [m for m in model_map.values() if hasattr(m, 'load_adapter')]
+
+    # Unload previous adapters for a clean state
+    for model in models_to_affect:
+        if hasattr(model, 'get_adapter_names'):
+            adapter_names = model.get_adapter_names()
+            for name in adapter_names:
+                if name != "default": model.delete_adapter(name)
+
+    if not loaded_loras: 
+        print("No active LoRAs to apply for this task.")
+        return
+
+    print("Applying LoRAs for the upcoming task...")
+
+    # Load and set adapters based on the updated state
+    for name, data in loaded_loras.items():
+        weight, path = data.get("weight", 0), data.get("path")
+        if weight == 0 or not path: continue
+
+        print(f"  - Preparing '{name}' for targets: {data.get('target_models', [])} with weight {weight}")
+
+        for target_name in data.get("target_models", []):
+            model_obj = model_map.get(target_name)
+            if model_obj:
+                try:
+                    # Load adapter with a unique name
+                    model_obj.load_adapter(path, adapter_name=name)
+                except Exception as e:
+                    gr.Warning(f"Could not load LoRA '{name}' into {target_name}. Error: {e}")
+
+    # This part of the logic may be simplified depending on the peft version,
+    # as set_adapter might not be needed if weights are handled differently.
+    # For now, we assume this pattern is for activating with weights.
+    active_loras = {name: data['weight'] for name, data in loaded_loras.items() if data.get('weight', 0) != 0}
+    if active_loras:
+        for model in models_to_affect:
+             if hasattr(model, "set_adapter"):
+                # Activate all loaded LoRAs with their specified weights
+                model.set_adapter(list(active_loras.keys()), list(active_loras.values()))
+        gr.Info(f"Applied {len(active_loras)} LoRA(s).")

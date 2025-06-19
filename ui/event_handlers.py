@@ -60,19 +60,35 @@ def clear_image_action():
         {}                                     # extracted_metadata_state
     ]
 
-def prepare_image_for_download(pil_image, ui_keys, *creative_values):
-    """Injects metadata into the current image for downloading."""
+def prepare_image_for_download(pil_image, app_state, ui_keys, *creative_values):
+    """Injects metadata, including LoRA settings from app_state, into the current image."""
     if not isinstance(pil_image, Image.Image):
         gr.Warning("No valid image to download.")
         return None
-    
+
     image_copy = pil_image.copy()
+
+    # Create the base dictionary from standard creative UI controls
     params_dict = metadata_manager.create_params_from_ui(ui_keys, creative_values)
+
+    # --- ADDED: Extract LoRA state and add it to the params dictionary ---
+    lora_state = app_state.get('lora_state', {})
+    loaded_loras = lora_state.get('loaded_loras', {})
+
+    if loaded_loras:
+        # Create a simple dict of {lora_name: weight} for metadata
+        lora_weights_for_save = {
+            name: data.get("weight", 1.0)
+            for name, data in loaded_loras.items()
+        }
+        params_dict['loras'] = lora_weights_for_save
+    # --- End of added block ---
+
     image_with_metadata = metadata_manager.write_image_metadata(image_copy, params_dict)
-    
+
     with tempfile.NamedTemporaryFile(delete=False, suffix=".png") as tmp_file:
         image_with_metadata.save(tmp_file.name, "PNG")
-        gr.Info("Image with current settings prepared for download.")
+        gr.Info("Image with current settings (including LoRAs) prepared for download.")
         return gr.update(value=tmp_file.name)
 
 def update_button_states(app_state, input_image_pil, queue_df_data):

@@ -48,11 +48,15 @@ def create_ui():
     components['block'] = block
 
     with block:
+        # MODIFIED: Added lora_state to the initial application state
         app_state = gr.State({
             "queue_state": {"queue": [], "next_id": 1, "processing": False, "editing_task_id": None},
-            "last_completed_video_path": None
+            "last_completed_video_path": None,
+            "lora_state": {"loaded_loras": {}} # Format: { lora_name: { path, weight } }
         })
         components['app_state'] = app_state
+
+        components['lora_name_state'] = gr.Textbox(visible=False, label="LoRA Names State")
 
         extracted_metadata_state = gr.State({})
         components['extracted_metadata_state'] = extracted_metadata_state
@@ -126,6 +130,35 @@ def create_ui():
                     components['cfg_ui'] = gr.Slider(label="CFG (Real)", minimum=1.0, maximum=32.0, value=1.0, step=0.01)
                     components['steps_ui'] = gr.Slider(label="Steps", minimum=1, maximum=100, value=25, step=1)
                     components['rs_ui'] = gr.Slider(label="RS", minimum=0.0, maximum=32.0, value=0.0, step=0.01, visible=False)
+                
+                # ADDED: LoRA Settings Accordion
+                with gr.Accordion("LoRA Settings", open=True):
+                    gr.Markdown("🧪 Experimental LoRA support. Upload `.safetensors` files. Applied before generation.")
+                    components['lora_upload_button_ui'] = gr.UploadButton(
+                        "Upload LoRA(s)",
+                        file_types=[".safetensors"],
+                        file_count="multiple",
+                        size="sm"
+                    ) 
+                    
+                # Pre-define 5 static, hidden slots for LoRA controls.
+                # This creates the components that goan.py is looking for.
+                for i in range(5):
+                    with gr.Row(visible=False, variant="panel") as lora_row:
+                        # Add each component to the dictionary with a unique key
+                        components[f'lora_row_{i}'] = lora_row
+                        components[f'lora_name_{i}'] = gr.Textbox(
+                            label="LoRA Name", interactive=False, scale=2
+                        )
+                        components[f'lora_weight_{i}'] = gr.Slider(
+                            label="Weight", minimum=-2.0, maximum=2.0, step=0.05, value=1.0, scale=3
+                        )
+                        components[f'lora_targets_{i}'] = gr.CheckboxGroup(
+                            label="Target Models", choices=["transformer", "text_encoder", "text_encoder_2"],
+                            value=["transformer"], scale=3
+                        )
+
+
                 with gr.Accordion("Debug Settings", open=False):
                     components['use_teacache_ui'] = gr.Checkbox(label='Use TeaCache', value=True)
                     components['use_fp32_transformer_output_checkbox_ui'] = gr.Checkbox(label="Use FP32 Transformer Output", value=False)

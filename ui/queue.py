@@ -20,10 +20,11 @@ from generation_core import worker
 from diffusers_helper.thread_utils import AsyncStream, async_run
 
 # NEW: Import helper functions from queue_helpers.py
-from .queue_helpers import ( # Removed duplicated functions
+from .queue_helpers import (
     np_to_base64_uri,
     get_queue_state,
-    update_queue_df_display
+    update_queue_df_display,
+    apply_loras_from_state,
 )
 
 
@@ -366,10 +367,14 @@ def autoload_queue_on_start_action(app_state: dict) -> tuple:
         gr.update()
     )
 
-def process_task_queue_main_loop(state_dict_gr_state):
-    queue_state = get_queue_state(state_dict_gr_state) # Uses imported helper
+
+def process_task_queue_main_loop(state_dict_gr_state, *lora_control_values):
+    """
+    Main loop for processing tasks in the queue. Now accepts LoRA control values
+    from the UI and applies them before starting a task.
+    """
+    queue_state = get_queue_state(state_dict_gr_state)
     shared_state.interrupt_flag.clear()
-    # Reset the multi-level abort state at the start of every run
     shared_state.abort_state.update({'level': 0, 'last_click_time': 0})
     output_stream_for_ui = state_dict_gr_state.get("active_output_stream_queue")
     if queue_state["processing"]:
@@ -413,9 +418,14 @@ def process_task_queue_main_loop(state_dict_gr_state):
                 current_task_obj["status"] = "error"; current_task_obj["error_message"] = "Missing Image"
             yield (state_dict_gr_state, update_queue_df_display(queue_state), gr.update(), gr.update(visible=False), gr.update(), gr.update(), gr.update(interactive=False), gr.update(interactive=True), gr.update(interactive=True)); break # Uses imported helper
         if task_parameters_for_worker.get('seed') == -1: task_parameters_for_worker['seed'] = np.random.randint(0, 2**32 - 1)
+        
+        # --- ADDED: This is the "pre-flight check" to apply LoRAs before starting the task ---
+        queue_helpers.apply_loras_from_state(state_dict_gr_state, *lora_control_values)
+
         print(f"Starting task {current_task_id} (Prompt: {task_parameters_for_worker.get('prompt', '')[:30]}...).")
         current_task_obj["status"] = "processing"
-        yield (state_dict_gr_state, update_queue_df_display(queue_state), gr.update(), gr.update(visible=False), gr.update(value=f"Processing Task {current_task_id}..."), gr.update(value=""), gr.update(interactive=False), gr.update(interactive=True), gr.update(interactive=True)) # Uses imported helper
+        yield (state_dict_gr_state, update_queue_df_display(queue_state), gr.update(), gr.update(visible=False), gr.update(value=f"Processing Task {current_task_id}..."), gr.update(value=""), gr.update(interactive=False), gr.update(interactive=True), gr.update(interactive=True))
+
         worker_args = {
             **task_parameters_for_worker,
             'task_id': current_task_id, 'output_queue_ref': actual_output_queue,
@@ -437,58 +447,22 @@ def process_task_queue_main_loop(state_dict_gr_state):
             elif flag == 'error': _, error_message_str = data_from_worker; gr.Warning(f"Task {current_task_id} Error: {error_message_str}"); current_task_obj["status"] = "error"; current_task_obj["error_message"] = str(error_message_str)[:100]; task_completed_successfully = False; break
             elif flag == 'end': _, success_bool, final_video_path = data_from_worker; task_completed_successfully = success_bool; last_known_output_filename = final_video_path if success_bool else last_known_output_filename; current_task_obj["status"] = "done" if success_bool else "error"; break
         
-        # This popped the queue state too early for autosave to work with a processing task's details
-        # with shared_state.queue_lock:
-        #    if queue_state["queue"] and queue_state["queue"][0]["id"] == current_task_id: queue_state["queue"].pop(0)
-        
         state_dict_gr_state["last_completed_video_path"] = last_known_output_filename if task_completed_successfully else None
         final_desc = f"Task {current_task_id} {'completed' if task_completed_successfully else 'finished with issues'}."
         yield (state_dict_gr_state, update_queue_df_display(queue_state), gr.update(value=state_dict_gr_state["last_completed_video_path"]), gr.update(visible=False), gr.update(value=final_desc), gr.update(value=""), gr.update(interactive=False), gr.update(interactive=True), gr.update(interactive=True)) # Uses imported helper
-
-        # Instead, the task remains in the queue with its updated status.
-        # It will only be removed by explicit user action (clear, remove)
-        # or if the loop truly completes all tasks.
-
-        state_dict_gr_state["last_completed_video_path"] = last_known_output_filename if task_completed_successfully else None
-        final_desc = f"Task {current_task_id} {'completed' if task_completed_successfully else 'finished with issues'}."
-        yield (state_dict_gr_state, update_queue_df_display(queue_state), gr.update(value=state_dict_gr_state["last_completed_video_path"]), gr.update(visible=False), gr.update(value=final_desc), gr.update(value=""), gr.update(interactive=False), gr.update(interactive=True), gr.update(interactive=True)) # Uses imported helper
-        
-        # Important: If you want the *next* task to start automatically,
-        # the loop must *continue*. If the task is processed and finished,
-        # the `current_task_obj` should be marked as "done" and the loop
-        # should move to the next task.
-        # If the task is to be completely *removed* from the queue list
-        # *after completion*, then the pop should happen here, but only
-        # for 'done' tasks, and still allow 'aborted'/'error' tasks to remain.
-
-        # Let's adjust the pop logic: pop only if successful completion
-        # and if the user wants auto-removal. For autosave on abort/error,
-        # the task *must* remain in the queue.
-
-        # A better approach: The task *remains* in the queue list with its status (`done`, `aborted`, `error`).
-        # The DataFrame display will reflect this status.
-        # The user can then manually clear 'done' or 'aborted' tasks from the UI.
-        # This aligns with the request to save the queue with the currently running (or interrupted) process.
-        
-        # The loop condition `while queue_state["queue"] and not shared_state.interrupt_flag.is_set():`
-        # will naturally move to the next task if the `current_task_obj` is updated
-        # and the UI display correctly handles showing only "pending" as actionable,
-        # or it should explicitly pop the *first* task only if its status is 'done'.
 
         with shared_state.queue_lock:
             # ONLY POP THE TASK IF IT'S DONE AND WE'RE MOVING TO THE NEXT ONE AUTOMATICALLY
-            # This makes the queue persistent for aborted/errored tasks.
             if current_task_obj["status"] == "done":
                  if queue_state["queue"] and queue_state["queue"][0]["id"] == current_task_id:
                     queue_state["queue"].pop(0)
-                    # Also, if a task is completed, we should probably clear the interrupt flag
-                    # so the next task can start, unless a full abort was requested.
-                    shared_state.interrupt_flag.clear() # Clear flag for next task if previous completed normally
-                    shared_state.abort_state.update({'level': 0, 'last_click_time': 0}) # Reset abort state
+                    shared_state.interrupt_flag.clear() 
+                    shared_state.abort_state.update({'level': 0, 'last_click_time': 0}) 
         if shared_state.interrupt_flag.is_set(): gr.Info("Queue processing halted by user."); break
     queue_state["processing"] = False; state_dict_gr_state["active_output_stream_queue"] = None
     final_status_msg = "All tasks processed." if not shared_state.interrupt_flag.is_set() else "Queue processing aborted."
     yield (state_dict_gr_state, update_queue_df_display(queue_state), gr.update(value=state_dict_gr_state["last_completed_video_path"]), gr.update(visible=False), gr.update(value=final_status_msg), gr.update(value=""), gr.update(interactive=True), gr.update(interactive=False), gr.update(interactive=True)) # Uses imported helper
+
 
 # CHANGED: Implemented multi-click logic for graceful/hard aborts.
 def abort_current_task_processing_action(state_dict_gr_state):
