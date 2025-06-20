@@ -16,8 +16,8 @@ def handle_lora_upload(app_state, uploaded_files):
     if not uploaded_files:
         return [app_state] + [gr.update()] * (1 + 5 * 4) # app_state + name_state + 5 rows/slots
 
-    lora_state = app_state.get('lora_state', {"loaded_loras": {}})
-    loaded_loras = lora_state.get('loaded_loras', {})
+    lora_state = app_state.setdefault('lora_state', {})
+    loaded_loras = lora_state.setdefault('loaded_loras', {})
     
     # Create a list of gr.update objects to return
     updates = [gr.update()] * (1 + 5 * 4) # name_state + 5 * (row, name, weight, targets)

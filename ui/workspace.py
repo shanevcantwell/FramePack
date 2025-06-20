@@ -245,7 +245,9 @@ def load_workspace_on_start():
 
     print("No workspace file found. Using default values.")
     default_vals = get_default_values_map()
-    return [None] + [default_vals.get(key) for key in shared_state.ALL_TASK_UI_KEYS]
+    # return [None] + [default_vals.get(key) for key in shared_state.ALL_TASK_UI_KEYS]
+    ui_updates = [gr.update(value=default_vals.get(key)) for key in shared_state.ALL_TASK_UI_KEYS]
+    return [None] + ui_updates
 
 def load_image_from_path(image_path):
     """Loads an image from a given path and returns an update for the Image component."""
