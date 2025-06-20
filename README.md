@@ -5,7 +5,7 @@ An absolute must-read before even touching goan is the official FramePack docume
 - ---
 Welcome to goan, an enhanced user interface designed for creative professionals and power users of FramePack. This project builds upon the brilliant FramePack video generation engine created by lllyasviel (of Fooocus and the Stable Diffusion Forge fork of A1111), exposing useful controls to reach further into FramePack's functionality through a robust and intuitive interface.
 
-![goan_ui](https://github.com/user-attachments/assets/ed4f100e-a8b3-4f8b-a2a1-703fe35a0cd2)
+![goan_ui_running_expanded](https://github.com/user-attachments/assets/764e2dd2-f124-4f03-a65a-eff1adabd175)
 
 The base FramePack provides a powerful core model. goan extends it with a suite of tools designed for serious workflow, experimentation, and reproducibility. Unlock fine-grained control over your video generations with batch processing, parameter editing, effortless recipe sharing by dropping a PNG with goan metadata into the UI, and complete workspace management.
 - ---
@@ -27,7 +27,11 @@ The features in goan are designed to directly support two important aspects for 
     * **Full Task Queue Control:** `goan` includes a full-featured task queue where you can add, remove, reorder, and *edit* jobs before or even during the task processing.
 * **Advanced Diffusion Controls:**
     * **Variable CFG:** Introduces the ability to adjust the "Distilled CFG Scale" during generation, offering artistic control over prompt adherence as the video evolves. This can be used to correct for a tendency for FramePack to "burn in" or oversaturate the final video as total length increases, giving you greater artistic control. [!Any effect from this is still being tested.]
+
 - ---
+
+![goan_ui_expanded](https://github.com/user-attachments/assets/a328f1fa-755f-452d-b6b5-b72918e5ff12)
+
 #### **Diffusion Controls Tips (CFG, Guidance Scale)**
 * **Note:** These setting suggestions are based on producing still images. Their effects on FramePack videos are still being discovered.)
 
