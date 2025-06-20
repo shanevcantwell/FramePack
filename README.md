@@ -5,6 +5,8 @@ An absolute must-read before even touching goan is the official FramePack docume
 - ---
 Welcome to goan, an enhanced user interface designed for creative professionals and power users of FramePack. This project builds upon the brilliant FramePack video generation engine created by lllyasviel (of Fooocus and the Stable Diffusion Forge fork of A1111), exposing useful controls to reach further into FramePack's functionality through a robust and intuitive interface.
 
+![goan_ui](https://github.com/user-attachments/assets/ed4f100e-a8b3-4f8b-a2a1-703fe35a0cd2)
+
 The base FramePack provides a powerful core model. goan extends it with a suite of tools designed for serious workflow, experimentation, and reproducibility. Unlock fine-grained control over your video generations with batch processing, parameter editing, effortless recipe sharing by dropping a PNG with goan metadata into the UI, and complete workspace management.
 - ---
 ### **Key Features for a Creative Workflow**
