@@ -110,7 +110,7 @@ def create_ui():
                     components[K.STEPS_UI] = gr.Slider(label="Steps", minimum=1, maximum=100, value=25, step=1)
                     components[K.RS_UI] = gr.Slider(label="RS", minimum=0.0, maximum=32.0, value=0.0, step=0.01, visible=False)
 
-                with gr.Accordion("LoRA Settings", open=False):
+                with gr.Accordion("LoRA Settings", open=False, visible=False):
                     gr.Markdown("🧪 Experimental LoRA support. Upload a `.safetensors` file. Applied before generation.")
                     components[K.LORA_UPLOAD_BUTTON_UI] = gr.UploadButton("Upload LoRA", file_types=[".safetensors"], file_count="single", size="sm")
                     with gr.Row(visible=False, variant="panel") as lora_row_0_ctx:
