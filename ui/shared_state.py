@@ -32,6 +32,11 @@ system_info = {
 
 
 # --- UI and Parameter Mapping Constants ---
+# ADDED: Centralized list of UI component keys for LoRA management.
+# These keys identify the top-level components for LoRA. The inner controls
+# are generated dynamically and managed by the lora_manager.
+LORA_UI_KEYS = ['lora_upload_button_ui', 'loras_dynamic_ui_container']
+
 # ADDED: Centralized lists of UI component keys to ensure consistency across modules.
 CREATIVE_UI_KEYS = [
     'prompt_ui', 'n_prompt_ui', 'total_second_length_ui', 'seed_ui', 'preview_frequency_ui',
@@ -41,6 +46,7 @@ ENVIRONMENT_UI_KEYS = [
     'use_teacache_ui', 'use_fp32_transformer_output_checkbox_ui', 'gpu_memory_preservation_ui',
     'mp4_crf_ui', 'output_folder_ui_ctrl', 'latent_window_size_ui'
 ]
+# MODIFIED: LoRA UI keys are now included in the list of all keys for workspace saving.
 ALL_TASK_UI_KEYS = CREATIVE_UI_KEYS + ENVIRONMENT_UI_KEYS
 
 # CHANGED: Corrected the keys of this map to be the actual UI component keys.
@@ -64,6 +70,8 @@ UI_TO_WORKER_PARAM_MAP = {
     'mp4_crf_ui': 'mp4_crf',
     'output_folder_ui_ctrl': 'output_folder',
     'latent_window_size_ui': 'latent_window_size'
+    # NOTE: LoRA parameters will be passed to the worker from the app_state,
+    # not directly from a single UI component, so they are not mapped here.
 }
 
 # The CREATIVE_PARAM_KEYS list defines the canonical names for parameters that are saved
@@ -72,4 +80,4 @@ UI_TO_WORKER_PARAM_MAP = {
 CREATIVE_PARAM_KEYS = [UI_TO_WORKER_PARAM_MAP[key] for key in CREATIVE_UI_KEYS]
 
 # ADDED: Centralized constant for the queue state JSON filename inside the zip.
-QUEUE_STATE_JSON_IN_ZIP = "queue_state.json" # THIS IS THE NEW LINE
+QUEUE_STATE_JSON_IN_ZIP = "queue_state.json"

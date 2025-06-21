@@ -17,7 +17,7 @@ from diffusers_helper.bucket_tools import find_nearest_bucket
 from diffusers_helper.gradio.progress_bar import make_progress_bar_html
 from ui import metadata as metadata_manager
 from ui import shared_state
-
+from core import generation_utils
 
 def _save_final_preview(history_latents, vae, job_id, task_id, outputs_folder, crf, output_queue_ref, high_vram):
     """
@@ -538,14 +538,12 @@ def worker(
         # --- Post-loop logic ---
         # If the loop was broken by a graceful abort (level 1), save the preview.
         if shared_state.abort_state['level'] == 1:
-            graceful_abort_preview_path = _save_final_preview(
-                history_latents_for_abort, vae, job_id, task_id, outputs_folder, mp4_crf, output_queue_ref, high_vram
+            graceful_abort_preview_path = generation_utils._save_final_preview(                history_latents_for_abort, vae, job_id, task_id, outputs_folder, mp4_crf, output_queue_ref, high_vram
             )
             # A graceful abort is not a full success, but we provide the preview path.
             success = False
             final_output_filename = graceful_abort_preview_path
-            _signal_abort_to_ui(output_queue_ref, task_id, graceful_abort_preview_path)
-
+            generation_utils._signal_abort_to_ui(output_queue_ref, task_id, graceful_abort_preview_path)
         # This else block runs only if the loop completed naturally without an abort signal.
         else:
             success = True
@@ -553,7 +551,7 @@ def worker(
 
     except (InterruptedError, KeyboardInterrupt) as e:
         print(f"Worker task {task_id} caught explicit abort signal: {e}")
-        _signal_abort_to_ui(output_queue_ref, task_id, graceful_abort_preview_path)
+        generation_utils._signal_abort_to_ui(output_queue_ref, task_id, graceful_abort_preview_path)
         success = False
         final_output_filename = graceful_abort_preview_path
     except Exception as e:

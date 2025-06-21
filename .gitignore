@@ -2,6 +2,7 @@ hf_download/
 outputs/
 repo/
 *Zone.Identifier
+loras/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
