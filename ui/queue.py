@@ -236,7 +236,6 @@ def autosave_queue_on_exit_action(state_dict_gr_state_ref):
     except Exception as e:
         print(f"Error during autosave: {e}"); traceback.print_exc()
 
-# --- REWRITTEN FUNCTION ---
 def process_task_queue_main_loop(state_dict_gr_state, *lora_control_values):
     """Main loop for processing tasks. It streams progress updates to the UI."""
     queue_state = queue_helpers.get_queue_state(state_dict_gr_state)
@@ -261,7 +260,6 @@ def process_task_queue_main_loop(state_dict_gr_state, *lora_control_values):
            gr.update(value="Queue processing started..."), gr.update(value=""), gr.update(interactive=False),
            gr.update(interactive=True), gr.update(interactive=True))
 
-    # --- MODIFIED: Setup LoRA Manager and try/finally block ---
     lora_handler = lora_manager.LoRAManager()
     try:
         # Unpack LoRA controls from the UI.
@@ -277,9 +275,11 @@ def process_task_queue_main_loop(state_dict_gr_state, *lora_control_values):
 
             if current_task.get('params', {}).get('seed') == -1:
                 current_task['params']['seed'] = np.random.randint(0, 2**32 - 1)
-
-            # --- MODIFIED: The old, failing call to queue_helpers has been removed. ---
             
+            # This line was unnecessary and causing an issue.
+            # No longer need to pre-apply LoRAs via queue_helpers here.
+            # queue_helpers.apply_loras_from_state(state_dict_gr_state, *lora_control_values) # REMOVED
+
             current_task["status"] = "processing"
 
             yield (state_dict_gr_state, queue_helpers.update_queue_df_display(queue_state), gr.update(),
@@ -296,17 +296,21 @@ def process_task_queue_main_loop(state_dict_gr_state, *lora_control_values):
                 flag, data = output_stream.output_queue.next()
 
                 if flag == 'progress':
+                    # Progress updates now also include the preview image.
                     task_id, preview_np, desc, html = data
                     yield (state_dict_gr_state, gr.update(), gr.update(), gr.update(value=preview_np), desc, html, gr.update(), gr.update(), gr.update())
                 
                 elif flag == 'file':
-                    # In case of graceful abort, the worker may send a final preview file.
-                    # We update the video path here to ensure it's displayed.
-                    task_id, last_video_path_for_task, desc = data
+                    task_id, new_video_path, _ = data
+                    last_video_path_for_task = new_video_path # Keep track of the latest video
+                    yield (state_dict_gr_state, gr.update(), gr.update(value=new_video_path), gr.update(), gr.update(), gr.update(), gr.update(), gr.update(), gr.update())
                 
                 elif flag == 'aborted':
-                    task_id, last_video_path_for_task = data
+                    # On abort, the worker may have sent a final file, so ensure it's displayed.
+                    task_id, abort_video_path = data
                     current_task["status"] = "aborted"
+                    # Pass the latest video to the UI, allowing it to reflect the last output
+                    yield (state_dict_gr_state, gr.update(), gr.update(value=abort_video_path), gr.update(), gr.update(), gr.update(), gr.update(), gr.update(), gr.update())
                     # Don't break, wait for 'end' signal to do final cleanup.
 
                 elif flag == 'crash':
@@ -314,48 +318,51 @@ def process_task_queue_main_loop(state_dict_gr_state, *lora_control_values):
                     gr.Warning(f"Task {current_task['id']} failed! Check console for traceback.")
                     current_task["status"] = "error"
                     current_task["error_message"] = "Worker process crashed."
-                    break
+                    break # Exit inner while loop on crash
 
                 elif flag == 'end':
                     if not task_crashed and current_task["status"] != "aborted":
                         current_task["status"] = "done"
-                    break
-            
-            if not task_crashed and current_task["status"] == "done":
-                 # The final video path is taken from the last completed task's metadata
-                 final_video_file = current_task.get("final_output_filename")
-                 if final_video_file:
-                     state_dict_gr_state["last_completed_video_path"] = final_video_file
-                     video_player_update = gr.update(value=final_video_file)
-                 else:
-                     video_player_update = gr.update()
-            else:
-                # On abort or crash, use the last preview path if available
-                video_player_update = gr.update(value=last_video_path_for_task) if last_video_path_for_task else gr.update()
+                        # If done, ensure the last video is the final output
+                        if last_video_path_for_task:
+                            current_task["final_output_filename"] = last_video_path_for_task
+                    break # Exit inner while loop on end
 
+            # After a task completes (or aborts/crashes)
             with shared_state.queue_lock:
                 if current_task["status"] in ["done", "error", "aborted"] and queue_state["queue"] and queue_state["queue"][0]["id"] == current_task["id"]:
-                    queue_state["queue"].pop(0)
-            
-            yield (state_dict_gr_state, queue_helpers.update_queue_df_display(queue_state), video_player_update,
+                    queue_state["queue"].pop(0) # Remove the task from queue
+
+            # Update UI for task completion/failure
+            final_video_for_display = state_dict_gr_state.get("last_completed_video_path") # Default from state
+            if current_task["status"] == "done" and current_task.get("final_output_filename"):
+                final_video_for_display = current_task["final_output_filename"]
+                state_dict_gr_state["last_completed_video_path"] = final_video_for_display
+            elif last_video_path_for_task: # If crashed or aborted, show the last known video
+                 final_video_for_display = last_video_path_for_task
+
+            yield (state_dict_gr_state, queue_helpers.update_queue_df_display(queue_state),
+                   gr.update(value=final_video_for_display), # Update the video player explicitly
                    gr.update(visible=False), gr.update(value=f"Task {current_task['id']} finished."), gr.update(value=""),
                    gr.update(interactive=False), gr.update(interactive=True), gr.update(interactive=True))
 
             if shared_state.interrupt_flag.is_set():
                 gr.Info("Queue processing halted by user.")
-                break
+                break # Exit outer while loop if interrupted
+
     finally:
-        # --- MODIFIED: Ensure LoRAs are reverted regardless of outcome ---
+        # Ensure LoRAs are reverted regardless of outcome
         print("Processing finished. Reverting all LoRAs to clean up.")
         lora_handler.revert_all_loras()
 
     queue_state["processing"] = False
     state_dict_gr_state["active_output_stream_queue"] = None
-    final_status = "All tasks processed." if not shared_state.interrupt_flag.is_set() else "Queue processing aborted."
+    final_status_message = "All tasks processed." if not shared_state.interrupt_flag.is_set() else "Queue processing aborted."
+    final_video_to_show = state_dict_gr_state.get("last_completed_video_path")
 
     yield (state_dict_gr_state, queue_helpers.update_queue_df_display(queue_state),
-           gr.update(value=state_dict_gr_state.get("last_completed_video_path")), gr.update(visible=False),
-           gr.update(value=final_status), gr.update(value=""), gr.update(interactive=True),
+           gr.update(value=final_video_to_show), gr.update(visible=False),
+           gr.update(value=final_status_message), gr.update(value=""), gr.update(interactive=True),
            gr.update(interactive=False), gr.update(interactive=True))
 
 
