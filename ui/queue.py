@@ -13,31 +13,33 @@ import traceback
 import time
 import shutil
 
+# --- MODIFIED: Import our new lora_manager ---
+from . import lora as lora_manager
 from . import shared_state
+from .enums import ComponentKey as K
 from core.generation_core import worker
 from diffusers_helper.thread_utils import AsyncStream, async_run
+# --- MODIFIED: No longer using queue_helpers for LoRA application ---
 from . import queue_helpers
 
 AUTOSAVE_FILENAME = "goan_autosave_queue.zip"
 
-# --- ADDED: New wrapper function for robust error handling ---
+
 def worker_wrapper(output_queue_ref, **kwargs):
     """
     A wrapper that calls the real worker in a try-except block
     to catch and report any backend exceptions to the console.
     """
     try:
-        # The real worker is imported from core.generation_core
         worker(output_queue_ref=output_queue_ref, **kwargs)
     except Exception:
-        # If the worker crashes, print the full traceback and send a 'crash' signal to the UI.
         tb_str = traceback.format_exc()
         print(f"--- BACKEND WORKER CRASHED ---\n{tb_str}\n--------------------------")
         output_queue_ref.push(('crash', tb_str))
 
 
 def add_or_update_task_in_queue(state_dict_gr_state, *args_from_ui_controls_tuple):
-    # ... (no changes in this function) ...
+    # This function remains unchanged.
     queue_state = queue_helpers.get_queue_state(state_dict_gr_state)
     editing_task_id = queue_state.get("editing_task_id", None)
     input_image_pil = args_from_ui_controls_tuple[0]
@@ -47,7 +49,7 @@ def add_or_update_task_in_queue(state_dict_gr_state, *args_from_ui_controls_tupl
     all_ui_values_tuple = args_from_ui_controls_tuple[1:]
     temp_params_from_ui = dict(zip(shared_state.ALL_TASK_UI_KEYS, all_ui_values_tuple))
     base_params_for_worker_dict = {
-        worker_key: (temp_params_from_ui.get(ui_key) != 'Off' if ui_key == 'gs_schedule_shape_ui' else temp_params_from_ui.get(ui_key))
+        worker_key: (temp_params_from_ui.get(ui_key) != 'Off' if ui_key == K.GS_SCHEDULE_SHAPE_UI.value else temp_params_from_ui.get(ui_key))
         for ui_key, worker_key in shared_state.UI_TO_WORKER_PARAM_MAP.items()
     }
     img_np_data = np.array(input_image_pil)
@@ -69,16 +71,18 @@ def add_or_update_task_in_queue(state_dict_gr_state, *args_from_ui_controls_tupl
             gr.Info("Added 1 task to the queue.")
     return state_dict_gr_state, queue_helpers.update_queue_df_display(queue_state), gr.update(value="Add Task to Queue", variant="secondary"), gr.update(visible=False)
 
+
 def cancel_edit_mode_action(state_dict_gr_state):
-    # ... (no changes in this function) ...
+    # This function remains unchanged.
     queue_state = queue_helpers.get_queue_state(state_dict_gr_state)
     if queue_state.get("editing_task_id") is not None:
         gr.Info("Edit cancelled.")
         queue_state["editing_task_id"] = None
     return state_dict_gr_state, queue_helpers.update_queue_df_display(queue_state), gr.update(value="Add Task to Queue", variant="secondary"), gr.update(visible=False)
 
+
 def handle_queue_action_on_select(evt: gr.SelectData, state_dict_gr_state, *ui_param_controls_tuple):
-    # ... (no changes in this function) ...
+    # This function remains unchanged.
     if evt.index is None or evt.value not in ["↑", "↓", "✖", "✎"]:
         return [state_dict_gr_state, queue_helpers.update_queue_df_display(queue_helpers.get_queue_state(state_dict_gr_state))] + [gr.update()] * (1 + len(shared_state.ALL_TASK_UI_KEYS) + 4)
     row_index, _ = evt.index
@@ -103,12 +107,13 @@ def handle_queue_action_on_select(evt: gr.SelectData, state_dict_gr_state, *ui_p
         gr.Info(f"Editing Task {task_to_edit['id']}.")
         img_np_from_task = params_to_load_to_ui.get('input_image')
         img_update = gr.update(value=Image.fromarray(img_np_from_task)) if isinstance(img_np_from_task, np.ndarray) else gr.update(value=None)
-        ui_updates = [gr.update(value=params_to_load_to_ui.get(shared_state.UI_TO_WORKER_PARAM_MAP.get(key), None)) for key in shared_state.ALL_TASK_UI_KEYS]
+        ui_updates = [gr.update(value=params_to_load_to_ui.get(shared_state.UI_TO_WORKER_PARAM_MAP.get(key.value), None)) for key in shared_state.ALL_TASK_UI_KEYS]
         return [state_dict_gr_state, queue_helpers.update_queue_df_display(queue_state), img_update] + ui_updates + [gr.update(), gr.update(), gr.update(value="Update Task", variant="primary"), gr.update(visible=True)]
     return [state_dict_gr_state, queue_helpers.update_queue_df_display(queue_state)] + [gr.update()] * (len(shared_state.ALL_TASK_UI_KEYS) + 5)
 
+
 def clear_task_queue_action(state_dict_gr_state):
-    # ... (no changes in this function) ...
+    # This function remains unchanged.
     queue_state = queue_helpers.get_queue_state(state_dict_gr_state)
     queue = queue_state["queue"]
     with shared_state.queue_lock:
@@ -126,8 +131,9 @@ def clear_task_queue_action(state_dict_gr_state):
                 gr.Info("Queue is already empty.")
     return state_dict_gr_state, queue_helpers.update_queue_df_display(queue_state)
 
+
 def save_queue_to_zip(state_dict_gr_state):
-    # ... (no changes in this function) ...
+    # This function remains unchanged.
     queue_state = queue_helpers.get_queue_state(state_dict_gr_state)
     queue = queue_state.get("queue", [])
     if not queue:
@@ -158,8 +164,9 @@ def save_queue_to_zip(state_dict_gr_state):
         print(f"Error saving queue to zip: {e}"); traceback.print_exc()
         return state_dict_gr_state, None
 
+
 def load_queue_from_zip(state_dict_gr_state, zip_file_or_path):
-    # ... (no changes in this function) ...
+    # This function remains unchanged.
     queue_state = queue_helpers.get_queue_state(state_dict_gr_state)
     filepath = None
     if isinstance(zip_file_or_path, str) and os.path.exists(zip_file_or_path):
@@ -209,7 +216,7 @@ def load_queue_from_zip(state_dict_gr_state, zip_file_or_path):
 
 
 def autosave_queue_on_exit_action(state_dict_gr_state_ref):
-    # ... (no changes in this function) ...
+    # This function remains unchanged.
     print("Attempting to autosave queue on exit...")
     queue_state = queue_helpers.get_queue_state(state_dict_gr_state_ref)
     if not queue_state.get("queue"):
@@ -254,73 +261,93 @@ def process_task_queue_main_loop(state_dict_gr_state, *lora_control_values):
            gr.update(value="Queue processing started..."), gr.update(value=""), gr.update(interactive=False),
            gr.update(interactive=True), gr.update(interactive=True))
 
-    while queue_state["queue"] and not shared_state.interrupt_flag.is_set():
-        with shared_state.queue_lock:
-            current_task = queue_state["queue"][0]
+    # --- MODIFIED: Setup LoRA Manager and try/finally block ---
+    lora_handler = lora_manager.LoRAManager()
+    try:
+        # Unpack LoRA controls from the UI.
+        # Assumes UI has one LoRA slot, providing name, weight, and targets.
+        if lora_control_values and len(lora_control_values) >= 3:
+            lora_name, lora_weight, lora_targets = lora_control_values
+            # Apply the LoRA before starting the task loop.
+            lora_handler.apply_lora(lora_name, lora_weight, lora_targets)
+        
+        while queue_state["queue"] and not shared_state.interrupt_flag.is_set():
+            with shared_state.queue_lock:
+                current_task = queue_state["queue"][0]
 
-        if current_task.get('params', {}).get('seed') == -1:
-            current_task['params']['seed'] = np.random.randint(0, 2**32 - 1)
+            if current_task.get('params', {}).get('seed') == -1:
+                current_task['params']['seed'] = np.random.randint(0, 2**32 - 1)
 
-        queue_helpers.apply_loras_from_state(state_dict_gr_state, *lora_control_values)
-        current_task["status"] = "processing"
-
-        yield (state_dict_gr_state, queue_helpers.update_queue_df_display(queue_state), gr.update(),
-               gr.update(visible=True), gr.update(value=f"Processing Task {current_task['id']}..."),
-               gr.update(value=""), gr.update(interactive=False), gr.update(interactive=True), gr.update(interactive=True))
-
-        # MODIFIED: Call the new robust wrapper function instead of the raw worker
-        worker_args = {**current_task["params"], 'task_id': current_task['id'], **shared_state.models}
-        async_run(worker_wrapper, output_queue_ref=output_stream.output_queue, **worker_args)
-
-        # This will hold the path to the latest video file generated by the current task
-        last_video_path_for_task = None
-        task_crashed = False
-
-        # MODIFIED: Simplified message loop to align with demo script and handle crashes
-        while True:
-            flag, data = output_stream.output_queue.next()
-
-            if flag == 'progress':
-                _, preview_np, desc, html = data
-                yield (state_dict_gr_state, gr.update(), gr.update(), gr.update(value=preview_np), desc, html, gr.update(), gr.update(), gr.update())
+            # --- MODIFIED: The old, failing call to queue_helpers has been removed. ---
             
-            elif flag == 'file':
-                # Worker has saved a video file. Store its path, but don't update the UI yet.
-                last_video_path_for_task = data[0] if isinstance(data, (list, tuple)) else data
+            current_task["status"] = "processing"
+
+            yield (state_dict_gr_state, queue_helpers.update_queue_df_display(queue_state), gr.update(),
+                   gr.update(visible=True), gr.update(value=f"Processing Task {current_task['id']}..."),
+                   gr.update(value=""), gr.update(interactive=False), gr.update(interactive=True), gr.update(interactive=True))
+
+            worker_args = {**current_task["params"], 'task_id': current_task['id'], **shared_state.models}
+            async_run(worker_wrapper, output_queue_ref=output_stream.output_queue, **worker_args)
+
+            last_video_path_for_task = None
+            task_crashed = False
+
+            while True:
+                flag, data = output_stream.output_queue.next()
+
+                if flag == 'progress':
+                    task_id, preview_np, desc, html = data
+                    yield (state_dict_gr_state, gr.update(), gr.update(), gr.update(value=preview_np), desc, html, gr.update(), gr.update(), gr.update())
+                
+                elif flag == 'file':
+                    # In case of graceful abort, the worker may send a final preview file.
+                    # We update the video path here to ensure it's displayed.
+                    task_id, last_video_path_for_task, desc = data
+                
+                elif flag == 'aborted':
+                    task_id, last_video_path_for_task = data
+                    current_task["status"] = "aborted"
+                    # Don't break, wait for 'end' signal to do final cleanup.
+
+                elif flag == 'crash':
+                    task_crashed = True
+                    gr.Warning(f"Task {current_task['id']} failed! Check console for traceback.")
+                    current_task["status"] = "error"
+                    current_task["error_message"] = "Worker process crashed."
+                    break
+
+                elif flag == 'end':
+                    if not task_crashed and current_task["status"] != "aborted":
+                        current_task["status"] = "done"
+                    break
             
-            elif flag == 'crash':
-                task_crashed = True
-                gr.Warning(f"Task {current_task['id']} failed! Check console for traceback.")
-                current_task["status"] = "error"
-                current_task["error_message"] = "Worker process crashed."
-                break
+            if not task_crashed and current_task["status"] == "done":
+                 # The final video path is taken from the last completed task's metadata
+                 final_video_file = current_task.get("final_output_filename")
+                 if final_video_file:
+                     state_dict_gr_state["last_completed_video_path"] = final_video_file
+                     video_player_update = gr.update(value=final_video_file)
+                 else:
+                     video_player_update = gr.update()
+            else:
+                # On abort or crash, use the last preview path if available
+                video_player_update = gr.update(value=last_video_path_for_task) if last_video_path_for_task else gr.update()
 
-            elif flag == 'end':
-                # Worker finished. The loop can end.
-                if not task_crashed:
-                    current_task["status"] = "done"
-                break
-        
-        # --- This block runs AFTER the worker has finished or crashed ---
-        
-        # Update the persistent state ONLY if the task was a success and produced a video
-        if not task_crashed and last_video_path_for_task:
-            state_dict_gr_state["last_completed_video_path"] = last_video_path_for_task
-        
-        # Create the final UI update for the video player
-        video_player_update = gr.update(value=last_video_path_for_task) if not task_crashed and last_video_path_for_task else gr.update()
-        
-        with shared_state.queue_lock:
-            if current_task["status"] in ["done", "error", "aborted"] and queue_state["queue"] and queue_state["queue"][0]["id"] == current_task["id"]:
-                queue_state["queue"].pop(0)
-        
-        yield (state_dict_gr_state, queue_helpers.update_queue_df_display(queue_state), video_player_update,
-               gr.update(visible=False), gr.update(value=f"Task {current_task['id']} finished."), gr.update(value=""),
-               gr.update(interactive=False), gr.update(interactive=True), gr.update(interactive=True))
+            with shared_state.queue_lock:
+                if current_task["status"] in ["done", "error", "aborted"] and queue_state["queue"] and queue_state["queue"][0]["id"] == current_task["id"]:
+                    queue_state["queue"].pop(0)
+            
+            yield (state_dict_gr_state, queue_helpers.update_queue_df_display(queue_state), video_player_update,
+                   gr.update(visible=False), gr.update(value=f"Task {current_task['id']} finished."), gr.update(value=""),
+                   gr.update(interactive=False), gr.update(interactive=True), gr.update(interactive=True))
 
-        if shared_state.interrupt_flag.is_set():
-            gr.Info("Queue processing halted by user.")
-            break
+            if shared_state.interrupt_flag.is_set():
+                gr.Info("Queue processing halted by user.")
+                break
+    finally:
+        # --- MODIFIED: Ensure LoRAs are reverted regardless of outcome ---
+        print("Processing finished. Reverting all LoRAs to clean up.")
+        lora_handler.revert_all_loras()
 
     queue_state["processing"] = False
     state_dict_gr_state["active_output_stream_queue"] = None
@@ -333,18 +360,25 @@ def process_task_queue_main_loop(state_dict_gr_state, *lora_control_values):
 
 
 def abort_current_task_processing_action(state_dict_gr_state):
-    # ... (no changes in this function) ...
+    # This function remains unchanged.
     queue_state = queue_helpers.get_queue_state(state_dict_gr_state)
     if not queue_state.get("processing", False):
         gr.Info("Nothing is currently processing.")
         return state_dict_gr_state, gr.update(interactive=False)
-    shared_state.interrupt_flag.set()
+    
     current_time = time.time()
-    if (current_time - shared_state.abort_state.get('last_click_time', 0)) < 0.75:
+    last_click_time = shared_state.abort_state.get('last_click_time', 0)
+    
+    # Check for a quick double-click to trigger a hard abort.
+    if (current_time - last_click_time) < 0.75:
         shared_state.abort_state['level'] = 2
-        gr.Info("Hard abort signal sent! Halting all operations.")
+        gr.Info("Hard abort signal sent! Halting all operations immediately.")
     else:
         shared_state.abort_state['level'] = 1
-        gr.Info("Graceful abort signal sent. Will stop after current step.")
+        gr.Info("Graceful abort signal sent. Will stop after current generation step.")
+        
     shared_state.abort_state['last_click_time'] = current_time
+    # This flag is for the main loop, while the abort_state level is for the worker.
+    shared_state.interrupt_flag.set()
+
     return state_dict_gr_state, gr.update(interactive=True)
