@@ -1,4 +1,4 @@
-# ui/lora.py (Simplified for new pattern)
+# ui/lora.py (Corrected for single file upload)
 
 import gradio as gr
 import os
@@ -8,54 +8,47 @@ import json
 LORA_DIR = os.path.abspath("./loras")
 os.makedirs(LORA_DIR, exist_ok=True)
 
-def handle_lora_upload(app_state, uploaded_files):
+def handle_lora_upload_and_update_ui(app_state, uploaded_file):
     """
-    Handles file uploads, updates the app_state, and returns a list of
-    gr.update objects to populate the pre-defined UI slots.
+    Processes a single uploaded LoRA file, updates the application state, and
+    immediately returns the necessary Gradio UI updates to show the controls.
     """
-    if not uploaded_files:
-        return [app_state] + [gr.update()] * (1 + 5 * 4) # app_state + name_state + 5 rows/slots
-
-    lora_state = app_state.setdefault('lora_state', {})
-    loaded_loras = lora_state.setdefault('loaded_loras', {})
-    
-    # Create a list of gr.update objects to return
-    updates = [gr.update()] * (1 + 5 * 4) # name_state + 5 * (row, name, weight, targets)
-
-    # Process newly uploaded files
-    for file_obj in uploaded_files:
-        if len(loaded_loras) >= 5:
-            gr.Warning("Maximum of 5 LoRAs reached.")
-            break
-            
-        lora_name = os.path.basename(file_obj.name)
-        if lora_name in loaded_loras:
-            gr.Info(f"LoRA '{lora_name}' is already loaded.")
-            continue
-
-        persistent_path = os.path.join(LORA_DIR, lora_name)
-        shutil.move(file_obj.name, persistent_path)
+    # Part 1: Process file and update state
+    # CHANGED: The 'uploaded_file' parameter is now a single file object, not a list.
+    if uploaded_file is not None:
+        lora_state = app_state.setdefault('lora_state', {})
+        loaded_loras = lora_state.setdefault('loaded_loras', {})
         
-        loaded_loras[lora_name] = {
-            "path": persistent_path
-        }
+        # This UI currently only supports one LoRA at a time.
+        # Clear any previously loaded LoRA info.
+        loaded_loras.clear()
+        
+        # CHANGED: Use the file object directly, no more list indexing.
+        lora_name = os.path.basename(uploaded_file.name)
+        persistent_path = os.path.join(LORA_DIR, lora_name)
+        shutil.move(uploaded_file.name, persistent_path)
+        
+        loaded_loras[lora_name] = { "path": persistent_path }
+        gr.Info(f"Loaded '{lora_name}'. UI updated.")
 
-    app_state['lora_state']['loaded_loras'] = loaded_loras
+    # Part 2: Generate UI updates (this part remains the same)
+    lora_state = app_state.get('lora_state', {})
+    loaded_loras = lora_state.get('loaded_loras', {})
     
-    # Update the UI based on the current state
-    lora_names = list(loaded_loras.keys())
-    updates[0] = json.dumps(lora_names) # Update the hidden name state textbox
+    if not loaded_loras:
+        # If no LoRAs are loaded, hide the slot.
+        ui_updates = [gr.update(value="[]"), gr.update(visible=False), gr.update(), gr.update(), gr.update()]
+    else:
+        # A LoRA is loaded, so create updates to show and populate the slot.
+        lora_name = list(loaded_loras.keys())[0]
+        ui_updates = [
+            gr.update(value=json.dumps([lora_name])), # lora_name_state
+            gr.update(visible=True),                  # lora_row_0 (make the whole row visible)
+            gr.update(value=lora_name),               # lora_name_0
+            gr.update(value=1.0),                     # lora_weight_0
+            # CHANGED: Updated default targets to include both text encoders, a more common use case.
+            gr.update(value=["text_encoder", "text_encoder_2"]) # lora_targets_0
+        ]
 
-    for i in range(5):
-        if i < len(lora_names):
-            name = lora_names[i]
-            # Make the slot visible and set its values
-            updates[1 + i * 4] = gr.update(visible=True)
-            updates[2 + i * 4] = gr.update(value=name)
-            updates[3 + i * 4] = gr.update(value=1.0) # Default weight
-            updates[4 + i * 4] = gr.update(value=["transformer"]) # Default target
-        else:
-            # Hide unused slots
-            updates[1 + i * 4] = gr.update(visible=False)
-
-    return [app_state] + updates
+    # Return the updated state PLUS the list of UI updates
+    return [app_state] + ui_updates

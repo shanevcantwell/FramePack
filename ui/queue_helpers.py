@@ -121,7 +121,6 @@ def remove_task_from_queue(state_dict_gr_state, task_index: int):
             
     return state_dict_gr_state, removed_task_id
 
-# --- NEW FUNCTION ADDED HERE ---
 def apply_loras_from_state(app_state, *lora_control_values):
     """
     Parses LoRA settings from the UI controls and applies them directly to the models.
@@ -137,13 +136,16 @@ def apply_loras_from_state(app_state, *lora_control_values):
         "text_encoder": shared_state.models.get('text_encoder'),
         "text_encoder_2": shared_state.models.get('text_encoder_2')
     }
-    models_to_affect = [m for m in model_map.values() if hasattr(m, 'load_adapter') or 'DynamicSwap' in m.__class__.__name__]
+    # Filter for models that actually can have adapters.
+    models_to_affect = [m for m in model_map.values() if m is not None and (hasattr(m, 'load_adapter') or 'DynamicSwap' in m.__class__.__name__)]
 
+    # Gracefully handle dynamic swapping if installed
     transformer_model = model_map.get("transformer")
     if transformer_model and 'DynamicSwap' in transformer_model.__class__.__name__:
         print("Temporarily uninstalling DynamicSwap wrapper to apply LoRA...")
         DynamicSwapInstaller.uninstall_model(transformer_model)
 
+    # Unload any existing adapters before applying new ones
     for model in models_to_affect:
         if hasattr(model, 'get_adapter_names'):
             adapter_names = model.get_adapter_names()
@@ -156,7 +158,8 @@ def apply_loras_from_state(app_state, *lora_control_values):
 
     active_loras_for_model = {}
     value_iterator = iter(lora_control_values)
-    for _ in range(5):
+    # This loop assumes a maximum of 5 LoRA slots, matching the original design intent.
+    for _ in range(5): 
         try:
             name = next(value_iterator)
             weight = next(value_iterator)
@@ -166,33 +169,36 @@ def apply_loras_from_state(app_state, *lora_control_values):
                 lora_path = loaded_loras_map[name].get("path")
                 if not lora_path:
                     continue
-
-                print(f"  - Preparing '{name}' for targets: {targets} with weight {weight}")
+                
+                print(f"  - Loading '{name}' for targets: {targets}")
                 active_loras_for_model[name] = weight
 
                 for target_name in targets:
                     model_obj = model_map.get(target_name)
                     if model_obj:
                         try:
-                            # --- MODIFICATION 1: Pass the weight/scale during load ---
-                            model_obj.load_adapter(
-                                lora_path, 
-                                adapter_name=name, 
-                                adapter_kwargs={"scale": weight}
-                            )
+                            # --- MODIFICATION 1: Load adapter WITHOUT scale/weight ---
+                            # The 'scale' kwarg was causing the TypeError. It's not supported here.
+                            model_obj.load_adapter(lora_path, adapter_name=name)
                         except Exception as e:
                             gr.Warning(f"Could not load LoRA '{name}' into {target_name}. Error: {e}")
 
         except StopIteration:
             break
-
+            
+    # --- MODIFICATION 2: Apply weights using the correct 'set_adapters' method ---
     if active_loras_for_model:
+        adapter_names = list(active_loras_for_model.keys())
+        adapter_weights = list(active_loras_for_model.values())
+        
         for model in models_to_affect:
-             if hasattr(model, "set_adapter"):
-                # --- MODIFICATION 2: Call set_adapter with only the list of names ---
-                model.set_adapter(list(active_loras_for_model.keys()))
-        gr.Info(f"Applied {len(active_loras_for_model)} LoRA(s).")
+             # Use set_adapters (plural) to pass both names and weights
+             if hasattr(model, "set_adapters"):
+                model.set_adapters(adapter_names, adapter_weights)
 
+        gr.Info(f"Applied {len(active_loras_for_model)} LoRA(s) with weights: {adapter_weights}")
+
+    # Re-install dynamic swapping if it was uninstalled
     if transformer_model and 'DynamicSwap' not in transformer_model.__class__.__name__:
         print("Reinstalling DynamicSwap wrapper...")
         DynamicSwapInstaller.install_model(transformer_model, device=cpu)

@@ -48,19 +48,16 @@ def create_ui():
     components['block'] = block
 
     with block:
-        # MODIFIED: Added lora_state to the initial application state
         app_state = gr.State({
             "queue_state": {"queue": [], "next_id": 1, "processing": False, "editing_task_id": None},
             "last_completed_video_path": None,
-            "lora_state": {"loaded_loras": {}} # Format: { lora_name: { path, weight } }
+            "lora_state": {"loaded_loras": {}}
         })
         components['app_state'] = app_state
 
         components['lora_name_state'] = gr.Textbox(visible=False, label="LoRA Names State")
-
         extracted_metadata_state = gr.State({})
         components['extracted_metadata_state'] = extracted_metadata_state
-
         modal_trigger_box = gr.Textbox(visible=False)
         components['modal_trigger_box'] = modal_trigger_box
 
@@ -76,15 +73,13 @@ def create_ui():
 
         with gr.Row():
             with gr.Column(scale=1, min_width=300):
-                # This File input is the primary, always-visible drop zone when empty.
                 components['image_file_input_ui'] = gr.File(label="Drop Image Here or Click to Upload", file_types=["image"])
-                # This Image display is hidden by default and has a fixed height.
                 components['input_image_display_ui'] = gr.Image(type="pil", label="Current Input Image", interactive=False, visible=False, height=220, show_download_button=False)
 
                 components['add_task_button'] = gr.Button("Add to Queue", variant="secondary")
                 with gr.Row():
                     components['clear_image_button_ui'] = gr.Button("Clear Image", variant="secondary", visible=False)
-                    components['download_image_button_ui'] = gr.DownloadButton("Download Image", variant="secondary", visible=False) # Changed to DownloadButton
+                    components['download_image_button_ui'] = gr.DownloadButton("Download Image", variant="secondary", visible=False)
 
                 components['process_queue_button'] = gr.Button("▶️ Process Queue", variant="primary")
                 components['abort_task_button'] = gr.Button("⏹️ Abort", variant="stop", interactive=True)
@@ -93,7 +88,6 @@ def create_ui():
             with gr.Column(scale=2, min_width=600):
                 components['prompt_ui'] = gr.Textbox(label="Prompt", lines=10)
                 components['n_prompt_ui'] = gr.Textbox(label="Negative Prompt", lines=4)
-                # MOVED: Video Length and Seed are now here for better workflow.
                 with gr.Row():
                     components['total_second_length_ui'] = gr.Slider(label="Video Length (s)", minimum=0.1, maximum=120, value=5.0, step=0.1)
                     components['seed_ui'] = gr.Number(label="Seed", value=-1, precision=0)
@@ -107,18 +101,15 @@ def create_ui():
                 components['load_queue_button_ui'] = gr.UploadButton("Load Queue", file_types=[".zip"], size="sm")
                 components['clear_queue_button_ui'] = gr.Button("Clear Pending", size="sm", variant="stop")
 
-        # NEW LOCATION: Latent preview image is now here, after the task queue group
-        # This will make it full-width, scaled to maintain aspect ratio by default.
         components['current_task_preview_image_ui'] = gr.Image(
-            label="Live Latent Preview", # Added a label for clarity in new position
+            label="Live Latent Preview",
             interactive=False,
             visible=False,
-            show_download_button=False # Ensure it doesn't have its own download button
+            show_download_button=False
         )
 
         with gr.Row(equal_height=False):
             with gr.Column(scale=1):
-                # REMOVED: Video Length and Seed were here.
                 with gr.Accordion("Advanced Settings", open=False):
                     components['total_segments_display_ui'] = gr.Markdown("Calculated Total Segments: N/A")
                     components['preview_frequency_ui'] = gr.Slider(label="Preview Freq.", minimum=0, maximum=100, value=5, step=1)
@@ -131,33 +122,27 @@ def create_ui():
                     components['steps_ui'] = gr.Slider(label="Steps", minimum=1, maximum=100, value=25, step=1)
                     components['rs_ui'] = gr.Slider(label="RS", minimum=0.0, maximum=32.0, value=0.0, step=0.01, visible=False)
                 
-                # ADDED: LoRA Settings Accordion
                 with gr.Accordion("LoRA Settings", open=False):
-                    gr.Markdown("🧪 Experimental LoRA support. Upload `.safetensors` files. Applied before generation.")
+                    gr.Markdown("🧪 Experimental LoRA support. Upload a `.safetensors` file. Applied before generation.")
                     components['lora_upload_button_ui'] = gr.UploadButton(
-                        "Upload LoRA(s)",
+                        "Upload LoRA",
                         file_types=[".safetensors"],
-                        file_count="multiple",
+                        file_count="single", # Changed to single for simplicity
                         size="sm"
                     ) 
-                    
-                # Pre-define 5 static, hidden slots for LoRA controls.
-                # This creates the components that goan.py is looking for.
-                for i in range(5):
-                    with gr.Row(visible=False, variant="panel") as lora_row:
-                        # Add each component to the dictionary with a unique key
-                        components[f'lora_row_{i}'] = lora_row
-                        components[f'lora_name_{i}'] = gr.Textbox(
+                    # REMOVED: The Refresh and Test buttons are no longer needed.
+                    with gr.Row(visible=False, variant="panel") as lora_row_0_ctx:
+                        components['lora_row_0'] = lora_row_0_ctx
+                        components['lora_name_0'] = gr.Textbox(
                             label="LoRA Name", interactive=False, scale=2
                         )
-                        components[f'lora_weight_{i}'] = gr.Slider(
+                        components['lora_weight_0'] = gr.Slider(
                             label="Weight", minimum=-2.0, maximum=2.0, step=0.05, value=1.0, scale=3
                         )
-                        components[f'lora_targets_{i}'] = gr.CheckboxGroup(
+                        components['lora_targets_0'] = gr.CheckboxGroup(
                             label="Target Models", choices=["transformer", "text_encoder", "text_encoder_2"],
-                            value=["transformer"], scale=3
+                            value=["text_encoder"], scale=3
                         )
-
 
                 with gr.Accordion("Debug Settings", open=False):
                     components['use_teacache_ui'] = gr.Checkbox(label='Use TeaCache', value=True)
@@ -172,14 +157,13 @@ def create_ui():
                     components['reset_ui_button'] = gr.Button("Save & Refresh UI", variant="secondary")
 
                 with gr.Row():
-                    components['workspace_downloader_ui'] = gr.File(visible=False, file_count="single", elem_id="workspace_downloader_hidden_file") # For save
+                    components['workspace_downloader_ui'] = gr.File(visible=False, file_count="single", elem_id="workspace_downloader_hidden_file")
                     components['save_workspace_button'] = gr.Button("Save Workspace", variant="secondary")
-                    components['load_workspace_button'] = gr.UploadButton("Load Workspace", file_types=[".json"]) # For load
+                    components['load_workspace_button'] = gr.UploadButton("Load Workspace", file_types=[".json"])
                 components['shutdown_button'] = gr.Button("Save All & Exit", variant="stop")
 
-            with gr.Column(scale=1): # This column now contains only video, progress desc, and progress bar
+            with gr.Column(scale=1):
                 gr.Markdown("## Live Preview & Output")
-                # components['current_task_preview_image_ui'] was moved from here
                 components['current_task_progress_desc_ui'] = gr.Markdown('')
                 components['current_task_progress_bar_ui'] = gr.HTML('')
                 components['last_finished_video_ui'] = gr.Video(interactive=True, autoplay=False, height=540)

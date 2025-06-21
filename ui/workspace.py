@@ -219,16 +219,22 @@ def load_workspace(uploaded_file):
     return load_settings_from_file(uploaded_file.name)
 
 def load_workspace_on_start():
-    """Loads settings on app startup."""
-    image_path_to_load = None; settings_file = None
-    if os.path.exists(UNLOAD_SAVE_FILENAME):
-        settings_file = UNLOAD_SAVE_FILENAME
-        try:
-            with open(settings_file, 'r') as f: settings = json.load(f)
-            if "refresh_image_path" in settings and os.path.exists(settings["refresh_image_path"]):
-                image_path_to_load = settings["refresh_image_path"]
-        except Exception: pass
-    elif os.path.exists(SETTINGS_FILENAME): settings_file = SETTINGS_FILENAME
+    """TEMPORARY DEBUGGING VERSION"""
+    print("Running minimal workspace load for debugging...")
+    # Return a tuple with a single None value for the single output component.
+    return (None,)
+
+# def load_workspace_on_start():
+    # """Loads settings on app startup."""
+    # image_path_to_load = None; settings_file = None
+    # if os.path.exists(UNLOAD_SAVE_FILENAME):
+    #     settings_file = UNLOAD_SAVE_FILENAME
+    #     try:
+    #         with open(settings_file, 'r') as f: settings = json.load(f)
+    #         if "refresh_image_path" in settings and os.path.exists(settings["refresh_image_path"]):
+    #             image_path_to_load = settings["refresh_image_path"]
+    #     except Exception: pass
+    # elif os.path.exists(SETTINGS_FILENAME): settings_file = SETTINGS_FILENAME
 
     if settings_file:
         print(f"Loading workspace from {settings_file}")
@@ -239,15 +245,18 @@ def load_workspace_on_start():
         if settings_file == UNLOAD_SAVE_FILENAME:
             try:
                 os.remove(UNLOAD_SAVE_FILENAME)
+                os.remove(UNLOAD_SAVE_FILENAME)
             except OSError as e:
                 print(f"Error deleting temporary unload save file '{UNLOAD_SAVE_FILENAME}': {e}")
-        return [image_path_to_load] + ui_updates
+        # return [image_path_to_load] + ui_updates
+        return tuple([image_path_to_load] + ui_updates)
 
     print("No workspace file found. Using default values.")
     default_vals = get_default_values_map()
     # return [None] + [default_vals.get(key) for key in shared_state.ALL_TASK_UI_KEYS]
     ui_updates = [gr.update(value=default_vals.get(key)) for key in shared_state.ALL_TASK_UI_KEYS]
-    return [None] + ui_updates
+    # return [None] + ui_updates
+    return tuple([None] + ui_updates)
 
 def load_image_from_path(image_path):
     """Loads an image from a given path and returns an update for the Image component."""
