@@ -219,22 +219,16 @@ def load_workspace(uploaded_file):
     return load_settings_from_file(uploaded_file.name)
 
 def load_workspace_on_start():
-    """TEMPORARY DEBUGGING VERSION"""
-    print("Running minimal workspace load for debugging...")
-    # Return a tuple with a single None value for the single output component.
-    return (None,)
-
-# def load_workspace_on_start():
-    # """Loads settings on app startup."""
-    # image_path_to_load = None; settings_file = None
-    # if os.path.exists(UNLOAD_SAVE_FILENAME):
-    #     settings_file = UNLOAD_SAVE_FILENAME
-    #     try:
-    #         with open(settings_file, 'r') as f: settings = json.load(f)
-    #         if "refresh_image_path" in settings and os.path.exists(settings["refresh_image_path"]):
-    #             image_path_to_load = settings["refresh_image_path"]
-    #     except Exception: pass
-    # elif os.path.exists(SETTINGS_FILENAME): settings_file = SETTINGS_FILENAME
+    """Loads settings on app startup."""
+    image_path_to_load = None; settings_file = None
+    if os.path.exists(UNLOAD_SAVE_FILENAME):
+        settings_file = UNLOAD_SAVE_FILENAME
+        try:
+            with open(settings_file, 'r') as f: settings = json.load(f)
+            if "refresh_image_path" in settings and os.path.exists(settings["refresh_image_path"]):
+                image_path_to_load = settings["refresh_image_path"]
+        except Exception: pass
+    elif os.path.exists(SETTINGS_FILENAME): settings_file = SETTINGS_FILENAME
 
     if settings_file:
         print(f"Loading workspace from {settings_file}")

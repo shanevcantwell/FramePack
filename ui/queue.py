@@ -296,7 +296,8 @@ def process_task_queue_main_loop(state_dict_gr_state, *lora_control_values):
         async_run(worker, **worker_args)
 
         task_completed_successfully = False
-        last_video_path = state_dict_gr_state.get("last_completed_video_path")
+        # Each task's potential output path starts as None.
+        last_video_path = None
 
         while True:
             flag, data = output_stream.output_queue.next()
@@ -318,16 +319,39 @@ def process_task_queue_main_loop(state_dict_gr_state, *lora_control_values):
                 success_bool, final_path = data[0], data[1]
                 current_task["status"] = "done" if success_bool else "error"
                 if success_bool:
-                    last_video_path = final_path
-                    task_completed_successfully = True
+                    # --- FIX: Defensively check the type of the returned path ---
+                    # This prevents a non-string value (like a boolean) from being
+                    # passed to the video component, which would cause a crash.
+                    if isinstance(final_path, str):
+                        last_video_path = final_path
+                        task_completed_successfully = True
+                    else:
+                        # The worker reported success but sent an invalid path.
+                        # Log a warning and proceed without updating the video player.
+                        gr.Warning(f"Task {current_task['id']} finished, but worker returned an invalid path: {final_path}")
                 break
+        # state_dict_gr_state["last_completed_video_path"] = last_video_path if task_completed_successfully else None
 
-        state_dict_gr_state["last_completed_video_path"] = last_video_path if task_completed_successfully else None
+        # with shared_state.queue_lock:
+        #     if current_task["status"] in ["done", "error", "aborted"] and queue_state["queue"] and queue_state["queue"][0]["id"] == current_task["id"]:
+        #         queue_state["queue"].pop(0)
+
+        # yield (state_dict_gr_state, queue_helpers.update_queue_df_display(queue_state), gr.update(value=last_video_path),
+        #        gr.update(visible=False), gr.update(value=f"Task {current_task['id']} finished."), gr.update(value=""),
+        #        gr.update(interactive=False), gr.update(interactive=True), gr.update(interactive=True))
+
+        # --- FIX: Only update the persistent state on a new, valid success ---
+        # This prevents a failed task from clearing the last good video path.
+        if task_completed_successfully and last_video_path:
+            state_dict_gr_state["last_completed_video_path"] = last_video_path
 
         with shared_state.queue_lock:
             if current_task["status"] in ["done", "error", "aborted"] and queue_state["queue"] and queue_state["queue"][0]["id"] == current_task["id"]:
                 queue_state["queue"].pop(0)
 
+        # The 'last_video_path' used here is now correctly scoped to the task that just ran.
+        # If it failed, this will be None, clearing the preview for the next task.
+        # The final yield at the end of the function will restore the last *good* one.
         yield (state_dict_gr_state, queue_helpers.update_queue_df_display(queue_state), gr.update(value=last_video_path),
                gr.update(visible=False), gr.update(value=f"Task {current_task['id']} finished."), gr.update(value=""),
                gr.update(interactive=False), gr.update(interactive=True), gr.update(interactive=True))

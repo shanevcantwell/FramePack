@@ -12,9 +12,6 @@ def create_ui():
     Creates the Gradio UI layout and returns a dictionary of all UI components.
     This separation of layout from logic makes the main script cleaner.
     """
-    # Define a dictionary to hold all UI components, which will be returned.
-    components = {}
-
     # Applying the green primary button color directly in CSS
     css = """
     #queue_df { font-size: 0.85rem; }
@@ -41,6 +38,17 @@ def create_ui():
     }
     .gr-button-primary:hover {
         background-color: var(--color-accent-600) !important;
+    }
+
+    /* --- FIX: Make fullscreen images fit the screen --- */
+    /* This targets the image element when it's inside Gradio's fixed-position fullscreen view. */
+    div.fixed > img {
+        /* Use object-fit to scale the image within its box while preserving aspect ratio. */
+        object-fit: contain !important;
+
+        /* Ensure the image's container can fill the screen. */
+        width: 100vw !important;
+        height: 100vh !important;
     }
     """
 
