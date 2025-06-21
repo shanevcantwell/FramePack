@@ -19,7 +19,7 @@ from ui import (
     workspace as workspace_manager,
     lora as lora_manager,
     shared_state,
-    switchboard  # <-- IMPORT THE NEW SWITCHBOARD
+    switchboard
 )
 
 # Environment Setup & Model Loading
@@ -39,15 +39,7 @@ switchboard.wire_all_events(ui_components)
 
 # --- Application Load/Startup Events ---
 # These are still initiated from the main file.
-with block:
-    refresh_image_path_state = gr.State(None)
-    (block.load(
-        fn=workspace_manager.load_workspace_on_start, 
-        inputs=[], 
-        outputs=[refresh_image_path_state]
-    ))
-   
-    atexit.register(queue_manager.autosave_queue_on_exit_action, shared_state.global_state_for_autosave)
+atexit.register(queue_manager.autosave_queue_on_exit_action, shared_state.global_state_for_autosave)
 
 # --- Application Launch ---
 if __name__ == "__main__":

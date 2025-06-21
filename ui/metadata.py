@@ -6,6 +6,7 @@ from PIL.PngImagePlugin import PngInfo
 
 # Import shared state for access to parameter key lists
 from . import shared_state
+from .enums import ComponentKey as K
 
 # --- Core Metadata Functions ---
 
@@ -13,16 +14,12 @@ def extract_metadata_from_pil_image(pil_image: Image.Image) -> dict:
     """Extracts a 'parameters' dictionary from a PIL image's text chunk."""
     if pil_image is None:
         return {}
-
-    # The 'text' attribute of a PIL image holds the PNG tEXt chunks.
     pnginfo_data = getattr(pil_image, 'text', None)
     if not isinstance(pnginfo_data, dict):
         return {}
-
     params_json_str = pnginfo_data.get('parameters')
     if not params_json_str:
         return {}
-
     try:
         extracted_params = json.loads(params_json_str)
         return extracted_params if isinstance(extracted_params, dict) else {}
@@ -30,14 +27,12 @@ def extract_metadata_from_pil_image(pil_image: Image.Image) -> dict:
         print(f"Error decoding metadata JSON: {e}")
         return {}
 
-def write_image_metadata(pil_image: Image.Image, params_dict: dict) -> Image.Image:
-    """Creates a PngInfo object with the given parameters and attaches it to the image."""
+def create_pnginfo_obj(params_dict: dict) -> PngInfo:
+    """Creates a PngInfo object with the given parameters."""
     metadata = PngInfo()
-    metadata.add_text("parameters", json.dumps(params_dict, indent=4)) # Added indent for readability
-    # NOTE: This function's behavior (assigning to .info) is handled by a
-    # corresponding fix in the event_handlers.prepare_image_for_download function.
-    pil_image.info = metadata
-    return pil_image
+    metadata.add_text("parameters", json.dumps(params_dict, indent=4))
+    return metadata
+
 
 # --- UI Handler Functions ---
 
@@ -48,51 +43,63 @@ def open_and_check_metadata(temp_filepath: str):
     """
     if not temp_filepath:
         return None, "", {}
-
     try:
-        # CORRECTED: Use the filepath string directly instead of trying to access a '.name' attribute.
         pil_image = Image.open(temp_filepath)
-        # Ensure image is in a compatible mode (e.g., convert palette images)
         if pil_image.mode == 'P':
             pil_image = pil_image.convert('RGBA')
-        else: # Ensure it has an alpha channel for consistency if it's RGB
+        else:
             pil_image = pil_image.convert('RGBA')
-
         extracted_metadata = extract_metadata_from_pil_image(pil_image)
         prompt_preview = ""
-
         if extracted_metadata and any(key in extracted_metadata for key in shared_state.CREATIVE_PARAM_KEYS):
             prompt_preview = extracted_metadata.get('prompt', '')
-
         return pil_image, prompt_preview, extracted_metadata
     except Exception as e:
-        # This will now only catch legitimate file opening/processing errors.
         print(f"Error processing uploaded file: {e}")
         gr.Warning(f"Could not open image. It may be corrupt or an unsupported format. Error: {e}")
         return None, "", {}
 
+# --- REWRITTEN FUNCTION ---
 def ui_load_params_from_image_metadata(extracted_metadata: dict) -> list:
     """
-    Loads creative parameters from a metadata dictionary and returns UI updates.
+    Loads creative parameters from a metadata dictionary, performing necessary
+    type conversions, and returns UI updates. This mirrors the logic from
+    workspace.py to fix the UI not updating.
     """
-    # This maps the canonical parameter names (e.g., 'steps') to their UI component keys (e.g., 'steps_ui').
     param_to_ui_map = {v: k for k, v in shared_state.UI_TO_WORKER_PARAM_MAP.items()}
-    
-    # Create a dictionary to hold updates, keyed by the UI component key.
     updates_dict = {}
+    
     if extracted_metadata:
         gr.Info("Applying creative settings from image...")
         for param_key, value in extracted_metadata.items():
             if param_key in param_to_ui_map:
                 ui_key = param_to_ui_map[param_key]
                 if ui_key in shared_state.CREATIVE_UI_KEYS:
-                    # Special handling for the variable CFG radio button
-                    if ui_key == 'gs_schedule_shape_ui':
-                        updates_dict[ui_key] = gr.update(value="Linear" if value else "Off")
-                    else:
+                    original_value = value
+                    try:
+                        # --- ADDED: Robust type conversion for UI components ---
+                        # Sliders expecting integers
+                        if ui_key in ['seed_ui', 'steps_ui', 'preview_frequency_ui']:
+                            # Use float() first to gracefully handle numbers like 25.0
+                            value = int(float(value))
+                        # Sliders expecting floats
+                        elif ui_key in ['total_second_length_ui', 'cfg_ui', 'gs_ui', 'rs_ui', 'gs_final_ui']:
+                            value = float(value)
+                        # Radio button expecting a string from a list of choices
+                        elif ui_key == 'gs_schedule_shape_ui':
+                            # In JSON metadata, this is saved as a boolean (true/false)
+                            value = "Linear" if value else "Off"
+                        
+                        # Update the dictionary with the correctly typed value
                         updates_dict[ui_key] = gr.update(value=value)
 
-    # Construct the final list of updates in the correct order.
+                    except (ValueError, TypeError):
+                        gr.Warning(f"Invalid value '{original_value}' for {ui_key} in image metadata. Skipping.")
+                        # If conversion fails, we skip this parameter and do not update it.
+                        continue
+
+    # Construct the final list of updates in the correct order, sending an
+    # update only for the components we found in the metadata.
     final_updates = [updates_dict.get(key, gr.update()) for key in shared_state.CREATIVE_UI_KEYS]
     return final_updates
 
@@ -106,8 +113,7 @@ def create_params_from_ui(ui_keys: list, ui_values: tuple) -> dict:
     for ui_key, value in ui_dict.items():
         worker_key = shared_state.UI_TO_WORKER_PARAM_MAP.get(ui_key)
         if worker_key:
-             # Handle the special case for the gs_schedule radio button
-            if ui_key == 'gs_schedule_shape_ui':
+            if ui_key == K.GS_SCHEDULE_SHAPE_UI.value:
                 params_dict[worker_key] = (value != 'Off')
             else:
                 params_dict[worker_key] = value

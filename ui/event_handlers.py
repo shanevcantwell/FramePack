@@ -7,13 +7,16 @@ from PIL import Image, PngImagePlugin
 from . import metadata as metadata_manager
 from . import shared_state
 from . import workspace as workspace_manager
-from . import queue_helpers
+# --- MODIFIED: Corrected the import paths for the queue functions ---
+from .queue_helpers import get_queue_state
+from .queue import autosave_queue_on_exit_action
+
 
 def safe_shutdown_action(app_state, *ui_values):
     """Performs all necessary save operations to prepare the app for a clean shutdown."""
     print("Performing safe shutdown saves...")
-    # This calls the corrected autosave function from the updated queue.py
-    autosave_queue_on_exit_action(app_state) 
+    # This call to autosave is correct as it comes from queue.py
+    autosave_queue_on_exit_action(app_state)
     workspace_manager.save_ui_and_image_for_refresh(*ui_values)
     gr.Info("Queue and UI state saved. It is now safe to close the terminal.")
 
@@ -28,10 +31,9 @@ def ui_update_total_segments(total_seconds_ui, latent_window_size_ui):
 def process_upload_and_show_image(temp_file_data):
     """
     Robustly handles file uploads from a gr.File component, checks for metadata,
-    and returns UI updates. This function can parse multiple data formats from Gradio.
+    and returns UI updates.
     """
     filepath = None
-    # Defensively parse the input to find the filepath, accommodating Gradio's inconsistencies.
     if isinstance(temp_file_data, str):
         filepath = temp_file_data
     elif hasattr(temp_file_data, 'name'):
@@ -39,22 +41,20 @@ def process_upload_and_show_image(temp_file_data):
     elif isinstance(temp_file_data, dict):
         filepath = temp_file_data.get('path')
 
-    # If a filepath could not be determined, reset the UI.
     if not filepath:
-        return (gr.update(visible=True, value=None), gr.update(visible=False, value=None), gr.update(visible=False), 
-                gr.update(visible=False), gr.update(variant="secondary"), None, "", {}, None)
+        return (gr.update(visible=True, value=None), gr.update(visible=False, value=None), gr.update(visible=False),
+                gr.update(visible=False), gr.update(variant="secondary"), "", {}, None)
 
     pil_image, prompt_preview, params = metadata_manager.open_and_check_metadata(filepath)
 
-    if pil_image is None:
-        return (gr.update(visible=True, value=None), gr.update(visible=False, value=None), gr.update(visible=False), 
-                gr.update(visible=False), gr.update(variant="secondary"), None, "", {}, None)
-    
-    has_metadata = bool(params)
-    trigger_value = str(time.time()) if has_metadata else None
-    
-    return (gr.update(visible=False, value=None), gr.update(visible=True, value=pil_image), gr.update(visible=True), 
-            gr.update(visible=True), gr.update(variant="primary"), pil_image, prompt_preview, params, trigger_value)
+    has_loadable_metadata = bool(params and any(key in params for key in shared_state.CREATIVE_PARAM_KEYS))
+
+    trigger_value = str(time.time()) if has_loadable_metadata else None
+
+    final_prompt_preview = prompt_preview if has_loadable_metadata else ""
+
+    return (gr.update(visible=False, value=None), gr.update(visible=True, value=pil_image), gr.update(visible=True),
+            gr.update(visible=True), gr.update(variant="primary"), final_prompt_preview, params, trigger_value)
 
 def clear_image_action():
     """Clears the input image and resets associated UI components."""
@@ -64,8 +64,7 @@ def clear_image_action():
         gr.update(visible=False),
         gr.update(visible=False),
         gr.update(variant="secondary"),
-        None,
-        {}
+        {} # For extracted_metadata_state
     )
 
 def prepare_image_for_download(pil_image, app_state, ui_keys, *creative_values):
@@ -84,29 +83,24 @@ def prepare_image_for_download(pil_image, app_state, ui_keys, *creative_values):
             for name, data in lora_state['loaded_loras'].items()
         }
 
-    image_with_metadata = metadata_manager.write_image_metadata(image_copy, params_dict)
-
-    pnginfo_obj = None
-    if isinstance(image_with_metadata.info, PngImagePlugin.PngInfo):
-        pnginfo_obj = image_with_metadata.info
-        image_with_metadata.info = {}
-
+    pnginfo_obj = metadata_manager.create_pnginfo_obj(params_dict)
     with tempfile.NamedTemporaryFile(delete=False, suffix=".png") as tmp_file:
-        image_with_metadata.save(tmp_file.name, "PNG", pnginfo=pnginfo_obj)
+        pil_image.save(tmp_file.name, "PNG", pnginfo=pnginfo_obj)
         gr.Info("Image with current settings prepared for download.")
         return gr.update(value=tmp_file.name)
 
 def update_button_states(app_state, input_image_pil, queue_df_data):
     """Updates button states based on application state."""
-    queue_state = queue_helpers.get_queue_state(app_state)
+    # This call to get_queue_state is now correct as it's imported from queue_helpers.py
+    queue_state = get_queue_state(app_state)
     is_processing = queue_state.get("processing", False)
     queue_has_tasks = bool(queue_state.get("queue"))
 
     add_task_variant = "primary" if input_image_pil is not None else "secondary"
-    
+
     process_queue_interactive = not is_processing and queue_has_tasks
     process_queue_variant = "primary" if queue_has_tasks else "secondary"
-    
+
     return (
         gr.update(variant=add_task_variant),
         gr.update(interactive=process_queue_interactive, variant=process_queue_variant)

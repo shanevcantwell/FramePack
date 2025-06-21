@@ -1,4 +1,4 @@
-﻿# ui/queue.py (Final, Complete Version)
+﻿# ui/queue.py
 # Handles all user-facing queue management logic and event handling for the UI.
 
 import gradio as gr
@@ -20,29 +20,37 @@ from . import queue_helpers
 
 AUTOSAVE_FILENAME = "goan_autosave_queue.zip"
 
+# --- ADDED: New wrapper function for robust error handling ---
+def worker_wrapper(output_queue_ref, **kwargs):
+    """
+    A wrapper that calls the real worker in a try-except block
+    to catch and report any backend exceptions to the console.
+    """
+    try:
+        # The real worker is imported from core.generation_core
+        worker(output_queue_ref=output_queue_ref, **kwargs)
+    except Exception:
+        # If the worker crashes, print the full traceback and send a 'crash' signal to the UI.
+        tb_str = traceback.format_exc()
+        print(f"--- BACKEND WORKER CRASHED ---\n{tb_str}\n--------------------------")
+        output_queue_ref.push(('crash', tb_str))
+
+
 def add_or_update_task_in_queue(state_dict_gr_state, *args_from_ui_controls_tuple):
-    """
-    Adds a new task to the queue or updates an existing one if in edit mode.
-    Gathers all settings from the UI controls.
-    """
+    # ... (no changes in this function) ...
     queue_state = queue_helpers.get_queue_state(state_dict_gr_state)
     editing_task_id = queue_state.get("editing_task_id", None)
-    
     input_image_pil = args_from_ui_controls_tuple[0]
-    
     if not input_image_pil:
         gr.Warning("Input image is required!")
         return state_dict_gr_state, queue_helpers.update_queue_df_display(queue_state), gr.update(value="Add Task to Queue" if editing_task_id is None else "Update Task"), gr.update(visible=editing_task_id is not None)
-
     all_ui_values_tuple = args_from_ui_controls_tuple[1:]
     temp_params_from_ui = dict(zip(shared_state.ALL_TASK_UI_KEYS, all_ui_values_tuple))
     base_params_for_worker_dict = {
         worker_key: (temp_params_from_ui.get(ui_key) != 'Off' if ui_key == 'gs_schedule_shape_ui' else temp_params_from_ui.get(ui_key))
         for ui_key, worker_key in shared_state.UI_TO_WORKER_PARAM_MAP.items()
     }
-
     img_np_data = np.array(input_image_pil)
-
     if editing_task_id is not None:
         with shared_state.queue_lock:
             for task in queue_state["queue"]:
@@ -59,11 +67,10 @@ def add_or_update_task_in_queue(state_dict_gr_state, *args_from_ui_controls_tupl
             queue_state["queue"].append(task)
             queue_state["next_id"] += 1
             gr.Info("Added 1 task to the queue.")
-
     return state_dict_gr_state, queue_helpers.update_queue_df_display(queue_state), gr.update(value="Add Task to Queue", variant="secondary"), gr.update(visible=False)
 
 def cancel_edit_mode_action(state_dict_gr_state):
-    """Resets the UI from task-editing mode back to normal."""
+    # ... (no changes in this function) ...
     queue_state = queue_helpers.get_queue_state(state_dict_gr_state)
     if queue_state.get("editing_task_id") is not None:
         gr.Info("Edit cancelled.")
@@ -71,19 +78,16 @@ def cancel_edit_mode_action(state_dict_gr_state):
     return state_dict_gr_state, queue_helpers.update_queue_df_display(queue_state), gr.update(value="Add Task to Queue", variant="secondary"), gr.update(visible=False)
 
 def handle_queue_action_on_select(evt: gr.SelectData, state_dict_gr_state, *ui_param_controls_tuple):
-    """Event handler for clicks on the action icons (↑, ↓, ✖, ✎) in the queue DataFrame."""
+    # ... (no changes in this function) ...
     if evt.index is None or evt.value not in ["↑", "↓", "✖", "✎"]:
         return [state_dict_gr_state, queue_helpers.update_queue_df_display(queue_helpers.get_queue_state(state_dict_gr_state))] + [gr.update()] * (1 + len(shared_state.ALL_TASK_UI_KEYS) + 4)
-    
     row_index, _ = evt.index
     button_clicked = evt.value
     queue_state = queue_helpers.get_queue_state(state_dict_gr_state)
     queue = queue_state["queue"]
-    
     if button_clicked in ["↑", "↓", "✖", "✎"] and queue_state.get("processing", False) and row_index == 0:
         gr.Warning("Cannot modify a task that is currently processing.")
         return [state_dict_gr_state, queue_helpers.update_queue_df_display(queue_state)] + [gr.update()] * (1 + len(shared_state.ALL_TASK_UI_KEYS) + 4)
-
     if button_clicked == "↑":
         queue_helpers.move_task_in_queue(state_dict_gr_state, 'up', row_index)
     elif button_clicked == "↓":
@@ -97,21 +101,16 @@ def handle_queue_action_on_select(evt: gr.SelectData, state_dict_gr_state, *ui_p
         params_to_load_to_ui = task_to_edit['params']
         queue_state["editing_task_id"] = task_to_edit['id']
         gr.Info(f"Editing Task {task_to_edit['id']}.")
-        
         img_np_from_task = params_to_load_to_ui.get('input_image')
         img_update = gr.update(value=Image.fromarray(img_np_from_task)) if isinstance(img_np_from_task, np.ndarray) else gr.update(value=None)
-        
         ui_updates = [gr.update(value=params_to_load_to_ui.get(shared_state.UI_TO_WORKER_PARAM_MAP.get(key), None)) for key in shared_state.ALL_TASK_UI_KEYS]
-
         return [state_dict_gr_state, queue_helpers.update_queue_df_display(queue_state), img_update] + ui_updates + [gr.update(), gr.update(), gr.update(value="Update Task", variant="primary"), gr.update(visible=True)]
-
     return [state_dict_gr_state, queue_helpers.update_queue_df_display(queue_state)] + [gr.update()] * (len(shared_state.ALL_TASK_UI_KEYS) + 5)
 
 def clear_task_queue_action(state_dict_gr_state):
-    """Clears all pending (non-processing) tasks from the queue."""
+    # ... (no changes in this function) ...
     queue_state = queue_helpers.get_queue_state(state_dict_gr_state)
     queue = queue_state["queue"]
-    
     with shared_state.queue_lock:
         if queue_state["processing"]:
             pending_tasks = queue[1:]
@@ -125,28 +124,24 @@ def clear_task_queue_action(state_dict_gr_state):
                 gr.Info(f"Cleared {cleared_count} tasks from the queue.")
             else:
                 gr.Info("Queue is already empty.")
-
     return state_dict_gr_state, queue_helpers.update_queue_df_display(queue_state)
 
 def save_queue_to_zip(state_dict_gr_state):
-    """Saves the entire current queue to a downloadable .zip file."""
+    # ... (no changes in this function) ...
     queue_state = queue_helpers.get_queue_state(state_dict_gr_state)
     queue = queue_state.get("queue", [])
     if not queue:
         gr.Info("Queue is empty. Nothing to save.")
         return state_dict_gr_state, None
-
     try:
         with tempfile.NamedTemporaryFile(delete=False, suffix=".zip") as tmp_file:
             temp_zip_path = tmp_file.name
-        
         with zipfile.ZipFile(temp_zip_path, 'w', zipfile.ZIP_DEFLATED) as zf:
             queue_manifest = []
             for task in queue:
                 params_copy = task['params'].copy()
                 input_image_np = params_copy.pop('input_image', None)
                 manifest_entry = {"id": task['id'], "params": params_copy, "status": task.get("status", "pending")}
-                
                 if input_image_np is not None:
                     img_filename = f"task_{task['id']}_input.png"
                     manifest_entry['image_ref'] = img_filename
@@ -154,11 +149,8 @@ def save_queue_to_zip(state_dict_gr_state):
                     with io.BytesIO() as buf:
                         img.save(buf, format='PNG')
                         zf.writestr(img_filename, buf.getvalue())
-                
                 queue_manifest.append(manifest_entry)
-
             zf.writestr(shared_state.QUEUE_STATE_JSON_IN_ZIP, json.dumps(queue_manifest, indent=4))
-        
         gr.Info(f"Queue with {len(queue)} tasks prepared for download.")
         return state_dict_gr_state, temp_zip_path
     except Exception as e:
@@ -167,42 +159,32 @@ def save_queue_to_zip(state_dict_gr_state):
         return state_dict_gr_state, None
 
 def load_queue_from_zip(state_dict_gr_state, zip_file_or_path):
-    """
-    Loads a queue from a zip file. Handles both a file path (string) from autoload
-    and a file object from the Gradio UI.
-    """
+    # ... (no changes in this function) ...
     queue_state = queue_helpers.get_queue_state(state_dict_gr_state)
     filepath = None
-
     if isinstance(zip_file_or_path, str) and os.path.exists(zip_file_or_path):
         filepath = zip_file_or_path
     elif hasattr(zip_file_or_path, 'name') and zip_file_or_path.name and os.path.exists(zip_file_or_path.name):
         filepath = zip_file_or_path.name
-
     if not filepath:
         print("No valid queue file found to load.")
         return state_dict_gr_state, queue_helpers.update_queue_df_display(queue_state)
-
     newly_loaded_queue, max_id_in_file, loaded_image_count, error_messages = [], 0, 0, []
-    
     try:
         with tempfile.TemporaryDirectory() as tmpdir_extract:
             with zipfile.ZipFile(filepath, 'r') as zf:
                 if shared_state.QUEUE_STATE_JSON_IN_ZIP not in zf.namelist():
                     raise ValueError(f"'{shared_state.QUEUE_STATE_JSON_IN_ZIP}' not found in zip")
                 zf.extractall(tmpdir_extract)
-            
             manifest_path = os.path.join(tmpdir_extract, shared_state.QUEUE_STATE_JSON_IN_ZIP)
             with open(manifest_path, 'r', encoding='utf-8') as f:
                 loaded_manifest = json.load(f)
-
             for task_data in loaded_manifest:
                 params = task_data.get('params', {})
                 task_id = task_data.get('id', 0)
                 max_id_in_file = max(max_id_in_file, task_id)
                 image_ref = task_data.get('image_ref')
                 img_np = None
-
                 if image_ref:
                     img_path_in_extract = os.path.join(tmpdir_extract, image_ref)
                     if os.path.exists(img_path_in_extract):
@@ -213,26 +195,21 @@ def load_queue_from_zip(state_dict_gr_state, zip_file_or_path):
                             error_messages.append(f"Err loading img for task {task_id}: {img_e}")
                     else:
                         error_messages.append(f"Missing img file for task {task_id}: {image_ref}")
-                
                 params['input_image'] = img_np
                 newly_loaded_queue.append({"id": task_id, "params": params, "status": "pending"})
-
         with shared_state.queue_lock:
             queue_state["queue"] = newly_loaded_queue
             queue_state["next_id"] = max(max_id_in_file + 1, queue_state.get("next_id", 1))
-
         gr.Info(f"Loaded {len(newly_loaded_queue)} tasks ({loaded_image_count} images).")
         if error_messages: gr.Warning(" ".join(error_messages))
-
     except Exception as e:
         gr.Warning(f"Failed to load queue from {os.path.basename(filepath)}: {e}")
         print(f"Error loading queue: {e}"); traceback.print_exc()
-
     return state_dict_gr_state, queue_helpers.update_queue_df_display(queue_state)
 
 
 def autosave_queue_on_exit_action(state_dict_gr_state_ref):
-    """Saves the current queue to a zip file on application exit."""
+    # ... (no changes in this function) ...
     print("Attempting to autosave queue on exit...")
     queue_state = queue_helpers.get_queue_state(state_dict_gr_state_ref)
     if not queue_state.get("queue"):
@@ -243,9 +220,7 @@ def autosave_queue_on_exit_action(state_dict_gr_state_ref):
             except OSError as e:
                 print(f"Error deleting old autosave file: {e}")
         return
-
     try:
-        # Assuming save_queue_to_zip is defined elsewhere in the file
         _, temp_zip_path = save_queue_to_zip(state_dict_gr_state_ref)
         if temp_zip_path and os.path.exists(temp_zip_path):
             shutil.copy(temp_zip_path, AUTOSAVE_FILENAME)
@@ -254,13 +229,14 @@ def autosave_queue_on_exit_action(state_dict_gr_state_ref):
     except Exception as e:
         print(f"Error during autosave: {e}"); traceback.print_exc()
 
+# --- REWRITTEN FUNCTION ---
 def process_task_queue_main_loop(state_dict_gr_state, *lora_control_values):
     """Main loop for processing tasks. It streams progress updates to the UI."""
     queue_state = queue_helpers.get_queue_state(state_dict_gr_state)
     shared_state.interrupt_flag.clear()
     shared_state.abort_state.update({'level': 0, 'last_click_time': 0})
 
-    if queue_state["processing"]:
+    if queue_state.get("processing", False):
         gr.Info("Queue processing is already active.")
         yield (state_dict_gr_state, queue_helpers.update_queue_df_display(queue_state), gr.update(), gr.update(), gr.update(), gr.update(), gr.update(interactive=False), gr.update(interactive=True), gr.update(interactive=True))
         return
@@ -292,67 +268,53 @@ def process_task_queue_main_loop(state_dict_gr_state, *lora_control_values):
                gr.update(visible=True), gr.update(value=f"Processing Task {current_task['id']}..."),
                gr.update(value=""), gr.update(interactive=False), gr.update(interactive=True), gr.update(interactive=True))
 
-        worker_args = {**current_task["params"], 'task_id': current_task['id'], 'output_queue_ref': output_stream.output_queue, **shared_state.models}
-        async_run(worker, **worker_args)
+        # MODIFIED: Call the new robust wrapper function instead of the raw worker
+        worker_args = {**current_task["params"], 'task_id': current_task['id'], **shared_state.models}
+        async_run(worker_wrapper, output_queue_ref=output_stream.output_queue, **worker_args)
 
-        task_completed_successfully = False
-        # Each task's potential output path starts as None.
-        last_video_path = None
+        # This will hold the path to the latest video file generated by the current task
+        last_video_path_for_task = None
+        task_crashed = False
 
+        # MODIFIED: Simplified message loop to align with demo script and handle crashes
         while True:
             flag, data = output_stream.output_queue.next()
+
             if flag == 'progress':
                 _, preview_np, desc, html = data
                 yield (state_dict_gr_state, gr.update(), gr.update(), gr.update(value=preview_np), desc, html, gr.update(), gr.update(), gr.update())
+            
             elif flag == 'file':
-                _, file_path, info_str = data
-                last_video_path = file_path
-                gr.Info(f"Task {current_task['id']}: {info_str}")
-            elif flag == 'aborted':
-                current_task["status"] = "aborted"
-                break
-            elif flag == 'error':
+                # Worker has saved a video file. Store its path, but don't update the UI yet.
+                last_video_path_for_task = data[0] if isinstance(data, (list, tuple)) else data
+            
+            elif flag == 'crash':
+                task_crashed = True
+                gr.Warning(f"Task {current_task['id']} failed! Check console for traceback.")
                 current_task["status"] = "error"
-                current_task["error_message"] = str(data[1])[:100]
+                current_task["error_message"] = "Worker process crashed."
                 break
+
             elif flag == 'end':
-                success_bool, final_path = data[0], data[1]
-                current_task["status"] = "done" if success_bool else "error"
-                if success_bool:
-                    # --- FIX: Defensively check the type of the returned path ---
-                    # This prevents a non-string value (like a boolean) from being
-                    # passed to the video component, which would cause a crash.
-                    if isinstance(final_path, str):
-                        last_video_path = final_path
-                        task_completed_successfully = True
-                    else:
-                        # The worker reported success but sent an invalid path.
-                        # Log a warning and proceed without updating the video player.
-                        gr.Warning(f"Task {current_task['id']} finished, but worker returned an invalid path: {final_path}")
+                # Worker finished. The loop can end.
+                if not task_crashed:
+                    current_task["status"] = "done"
                 break
-        # state_dict_gr_state["last_completed_video_path"] = last_video_path if task_completed_successfully else None
-
-        # with shared_state.queue_lock:
-        #     if current_task["status"] in ["done", "error", "aborted"] and queue_state["queue"] and queue_state["queue"][0]["id"] == current_task["id"]:
-        #         queue_state["queue"].pop(0)
-
-        # yield (state_dict_gr_state, queue_helpers.update_queue_df_display(queue_state), gr.update(value=last_video_path),
-        #        gr.update(visible=False), gr.update(value=f"Task {current_task['id']} finished."), gr.update(value=""),
-        #        gr.update(interactive=False), gr.update(interactive=True), gr.update(interactive=True))
-
-        # --- FIX: Only update the persistent state on a new, valid success ---
-        # This prevents a failed task from clearing the last good video path.
-        if task_completed_successfully and last_video_path:
-            state_dict_gr_state["last_completed_video_path"] = last_video_path
-
+        
+        # --- This block runs AFTER the worker has finished or crashed ---
+        
+        # Update the persistent state ONLY if the task was a success and produced a video
+        if not task_crashed and last_video_path_for_task:
+            state_dict_gr_state["last_completed_video_path"] = last_video_path_for_task
+        
+        # Create the final UI update for the video player
+        video_player_update = gr.update(value=last_video_path_for_task) if not task_crashed and last_video_path_for_task else gr.update()
+        
         with shared_state.queue_lock:
             if current_task["status"] in ["done", "error", "aborted"] and queue_state["queue"] and queue_state["queue"][0]["id"] == current_task["id"]:
                 queue_state["queue"].pop(0)
-
-        # The 'last_video_path' used here is now correctly scoped to the task that just ran.
-        # If it failed, this will be None, clearing the preview for the next task.
-        # The final yield at the end of the function will restore the last *good* one.
-        yield (state_dict_gr_state, queue_helpers.update_queue_df_display(queue_state), gr.update(value=last_video_path),
+        
+        yield (state_dict_gr_state, queue_helpers.update_queue_df_display(queue_state), video_player_update,
                gr.update(visible=False), gr.update(value=f"Task {current_task['id']} finished."), gr.update(value=""),
                gr.update(interactive=False), gr.update(interactive=True), gr.update(interactive=True))
 
@@ -371,21 +333,18 @@ def process_task_queue_main_loop(state_dict_gr_state, *lora_control_values):
 
 
 def abort_current_task_processing_action(state_dict_gr_state):
-    """Sends a signal to gracefully or forcefully abort the current task."""
+    # ... (no changes in this function) ...
     queue_state = queue_helpers.get_queue_state(state_dict_gr_state)
     if not queue_state.get("processing", False):
         gr.Info("Nothing is currently processing.")
         return state_dict_gr_state, gr.update(interactive=False)
-
     shared_state.interrupt_flag.set()
     current_time = time.time()
-    
     if (current_time - shared_state.abort_state.get('last_click_time', 0)) < 0.75:
         shared_state.abort_state['level'] = 2
         gr.Info("Hard abort signal sent! Halting all operations.")
     else:
         shared_state.abort_state['level'] = 1
         gr.Info("Graceful abort signal sent. Will stop after current step.")
-    
     shared_state.abort_state['last_click_time'] = current_time
     return state_dict_gr_state, gr.update(interactive=True)
