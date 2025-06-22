@@ -56,6 +56,8 @@ class ComponentKey(StrEnum):
     GS_UI = auto()
     GS_SCHEDULE_SHAPE_UI = auto()
     GS_FINAL_UI = auto()
+    ROLL_OFF_START_UI = auto()
+    ROLL_OFF_FACTOR_UI = auto()
     CFG_UI = auto()
     STEPS_UI = auto()
     RS_UI = auto()

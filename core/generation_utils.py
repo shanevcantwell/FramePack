@@ -7,8 +7,59 @@ from diffusers_helper.memory import load_model_as_complete, unload_complete_mode
 from diffusers_helper.hunyuan import vae_decode
 from diffusers_helper.utils import save_bcthw_as_mp4
 from diffusers_helper.gradio.progress_bar import make_progress_bar_html
+import numpy as np
+
 from . import generation_utils
 
+def generate_roll_off_schedule(
+    total_steps: int,
+    peak_cfg: float,
+    final_cfg: float,
+    roll_off_start_percent: float,
+    roll_off_factor: float
+) -> list[float]:
+    """
+    Generates a CFG schedule that holds a peak value and then rolls off.
+
+    Args:
+        total_steps (int): The total number of inference steps.
+        peak_cfg (float): The CFG value to hold before the roll-off.
+        final_cfg (float): The CFG value to ramp down to at the final step.
+        roll_off_start_percent (float): The point (0.0 to 1.0) to start the roll-off.
+        roll_off_factor (float): The exponential factor for the curve (1.0 is linear).
+
+    Returns:
+        list[float]: A list of CFG values, one for each step.
+    """
+    # Calculate the step at which the ramp-down begins
+    ramp_down_start_step = int(round(total_steps * roll_off_start_percent))
+    
+    # The number of steps to hold the peak CFG
+    sustain_steps = ramp_down_start_step
+    
+    # The number of steps for the ramp-down phase
+    ramp_steps = total_steps - sustain_steps
+    
+    if ramp_steps <= 0:
+        # If the start point is at or after 100%, just hold the peak CFG
+        return np.full(total_steps, peak_cfg).tolist()
+
+    # Phase 1: Hold the peak CFG
+    sustain_phase = np.full(sustain_steps, peak_cfg)
+
+    # Phase 2: Generate the roll-off curve
+    # Create a normalized time vector from 0 to 1 for the ramp
+    t = np.linspace(0, 1, ramp_steps)
+    # Apply the roll-off factor to shape the curve
+    t_curved = t ** roll_off_factor
+    
+    # Interpolate from peak to final CFG along the curved timeline
+    roll_off_phase = peak_cfg + (final_cfg - peak_cfg) * t_curved
+
+    # Combine the phases and return
+    full_schedule = np.concatenate([sustain_phase, roll_off_phase])
+    
+    return full_schedule.tolist()
 def _save_final_preview(history_latents, vae, job_id, task_id, outputs_folder, crf, output_queue_ref, high_vram):
     """
     Helper function to decode and save the final video preview during a graceful abort.
