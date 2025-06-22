@@ -1,5 +1,6 @@
 # ui/shared_state.py
 import threading
+from .enums import ComponentKey as K
 
 # --- Application-wide Threading Controls ---
 # Lock for thread-safe queue modifications.
@@ -7,9 +8,7 @@ queue_lock = threading.Lock()
 
 # Event to signal the abortion of the current processing task.
 # This is kept for compatibility and as a simple, overarching abort flag.
-# MODIFIED START: Renamed abort_event to interrupt_flag
 interrupt_flag = threading.Event()
-# MODIFIED END
 
 # CHANGED: Added state dictionary for the multi-level abort feature.
 # 'level' 0: No abort. 1: Graceful abort (1-click). 2: Hard abort (2-click).
@@ -33,50 +32,49 @@ system_info = {
 
 # --- UI and Parameter Mapping Constants ---
 # ADDED: Centralized list of UI component keys for LoRA management.
-# These keys identify the top-level components for LoRA. The inner controls
-# are generated dynamically and managed by the lora_manager.
-LORA_UI_KEYS = ['lora_upload_button_ui', 'loras_dynamic_ui_container']
+LORA_UI_KEYS = [K.LORA_UPLOAD_BUTTON_UI, K.LORA_ROW_0]
 
-# ADDED: Centralized lists of UI component keys to ensure consistency across modules.
+# MODIFIED: Added the Roll-off UI component keys to the list of creative parameters.
 CREATIVE_UI_KEYS = [
-    'prompt_ui', 'n_prompt_ui', 'total_second_length_ui', 'seed_ui', 'preview_frequency_ui',
-    'segments_to_decode_csv_ui', 'gs_ui', 'gs_schedule_shape_ui', 'gs_final_ui', 'steps_ui', 'cfg_ui', 'rs_ui'
+    K.PROMPT_UI, K.N_PROMPT_UI, K.TOTAL_SECOND_LENGTH_UI, K.SEED_UI, K.PREVIEW_FREQUENCY_UI,
+    K.SEGMENTS_TO_DECODE_CSV_UI, K.GS_UI, K.GS_SCHEDULE_SHAPE_UI, K.GS_FINAL_UI,
+    K.ROLL_OFF_START_UI, K.ROLL_OFF_FACTOR_UI,
+    K.STEPS_UI, K.CFG_UI, K.RS_UI
 ]
 ENVIRONMENT_UI_KEYS = [
-    'use_teacache_ui', 'use_fp32_transformer_output_checkbox_ui', 'gpu_memory_preservation_ui',
-    'mp4_crf_ui', 'output_folder_ui_ctrl', 'latent_window_size_ui'
+    K.USE_TEACACHE_UI, K.USE_FP32_TRANSFORMER_OUTPUT_CHECKBOX_UI, K.GPU_MEMORY_PRESERVATION_UI,
+    K.MP4_CRF_UI, K.OUTPUT_FOLDER_UI_CTRL, K.LATENT_WINDOW_SIZE_UI
 ]
-# MODIFIED: LoRA UI keys are now included in the list of all keys for workspace saving.
 ALL_TASK_UI_KEYS = CREATIVE_UI_KEYS + ENVIRONMENT_UI_KEYS
 
-# CHANGED: Corrected the keys of this map to be the actual UI component keys.
-# This map is the single source of truth for converting UI component names to worker parameter names.
+# MODIFIED: Added mappings for the Roll-off parameters.
+# This is the single source of truth for converting UI component names to worker parameter names.
 UI_TO_WORKER_PARAM_MAP = {
-    'prompt_ui': 'prompt',
-    'n_prompt_ui': 'n_prompt',
-    'total_second_length_ui': 'total_second_length',
-    'seed_ui': 'seed',
-    'preview_frequency_ui': 'preview_frequency',
-    'segments_to_decode_csv_ui': 'segments_to_decode_csv',
-    'gs_ui': 'gs',
-    'gs_schedule_shape_ui': 'gs_schedule_active',
-    'gs_final_ui': 'gs_final',
-    'steps_ui': 'steps',
-    'cfg_ui': 'cfg',
-    'rs_ui': 'rs',
-    'use_teacache_ui': 'use_teacache',
-    'use_fp32_transformer_output_checkbox_ui': 'use_fp32_transformer_output',
-    'gpu_memory_preservation_ui': 'gpu_memory_preservation',
-    'mp4_crf_ui': 'mp4_crf',
-    'output_folder_ui_ctrl': 'output_folder',
-    'latent_window_size_ui': 'latent_window_size'
-    # NOTE: LoRA parameters will be passed to the worker from the app_state,
-    # not directly from a single UI component, so they are not mapped here.
+    K.PROMPT_UI: 'prompt',
+    K.N_PROMPT_UI: 'n_prompt',
+    K.TOTAL_SECOND_LENGTH_UI: 'total_second_length',
+    K.SEED_UI: 'seed',
+    K.PREVIEW_FREQUENCY_UI: 'preview_frequency',
+    K.SEGMENTS_TO_DECODE_CSV_UI: 'segments_to_decode_csv',
+    K.GS_UI: 'gs',
+    K.GS_SCHEDULE_SHAPE_UI: 'gs_schedule_shape',
+    K.GS_FINAL_UI: 'gs_final',
+    K.ROLL_OFF_START_UI: 'roll_off_start',
+    K.ROLL_OFF_FACTOR_UI: 'roll_off_factor',
+    K.STEPS_UI: 'steps',
+    K.CFG_UI: 'cfg',
+    K.RS_UI: 'rs',
+    K.USE_TEACACHE_UI: 'use_teacache',
+    K.USE_FP32_TRANSFORMER_OUTPUT_CHECKBOX_UI: 'use_fp32_transformer_output',
+    K.GPU_MEMORY_PRESERVATION_UI: 'gpu_memory_preservation',
+    K.MP4_CRF_UI: 'mp4_crf',
+    K.OUTPUT_FOLDER_UI_CTRL: 'output_folder',
+    K.LATENT_WINDOW_SIZE_UI: 'latent_window_size'
 }
 
 # The CREATIVE_PARAM_KEYS list defines the canonical names for parameters that are saved
 # within image metadata and is used when loading that metadata back into the UI.
-# CHANGED: This is now built dynamically to guarantee its order and content match the UI keys and the map.
+# This logic is now correct as it iterates over a list of enums.
 CREATIVE_PARAM_KEYS = [UI_TO_WORKER_PARAM_MAP[key] for key in CREATIVE_UI_KEYS]
 
 # ADDED: Centralized constant for the queue state JSON filename inside the zip.

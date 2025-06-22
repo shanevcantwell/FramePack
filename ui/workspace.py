@@ -9,10 +9,11 @@ import tempfile
 
 from . import shared_state
 from . import metadata as metadata_manager
+from . import legacy_support  # <-- ADD THIS IMPORT
 from PIL import Image
 
 # --- Constants ---
-outputs_folder = './outputs_svc/'
+outputs_folder = './outputs/'
 SETTINGS_FILENAME = "goan_settings.json"
 UNLOAD_SAVE_FILENAME = "goan_unload_save.json"
 REFRESH_IMAGE_FILENAME = "goan_refresh_image.png"
@@ -33,6 +34,9 @@ def get_default_values_map():
         'gs_ui': 10.0,
         'gs_schedule_shape_ui': 'Off',
         'gs_final_ui': 10.0,
+        'roll_off_start_ui': 75,
+        # 'roll_off_start_ui': 75, # MODIFIED: Removed duplicate key
+        'roll_off_factor_ui': 1.0,
         'steps_ui': 25,
         'cfg_ui': 1.0,
         'rs_ui': 0.0,
@@ -63,6 +67,10 @@ def load_settings_from_file(filepath, return_updates=True):
         try:
             with open(filepath, 'r', encoding='utf-8') as f:
                 loaded_settings = json.load(f)
+
+            # MODIFIED: Apply legacy parameter conversion after loading.
+            legacy_support.convert_legacy_params(loaded_settings)
+
             gr.Info(f"Loaded workspace from {filepath}")
         except Exception as e:
             gr.Warning(f"Could not load workspace from {filepath}: {e}")
@@ -75,12 +83,13 @@ def load_settings_from_file(filepath, return_updates=True):
     final_settings = {**default_values, **loaded_settings}
     output_values = []
 
-    for key in shared_state.ALL_TASK_UI_KEYS:
+    for key_enum in shared_state.ALL_TASK_UI_KEYS:
+        key = key_enum.value
         value = final_settings.get(key, default_values.get(key))
         try:
-            if key in ['seed_ui', 'latent_window_size_ui', 'steps_ui', 'mp4_crf_ui', 'preview_frequency_ui']:
+            if key in ['seed_ui', 'latent_window_size_ui', 'steps_ui', 'mp4_crf_ui', 'preview_frequency_ui', 'roll_off_start_ui']:
                 value = int(value)
-            elif key in ['total_second_length_ui', 'cfg_ui', 'gs_ui', 'rs_ui', 'gpu_memory_preservation_ui', 'gs_final_ui']:
+            elif key in ['total_second_length_ui', 'cfg_ui', 'gs_ui', 'rs_ui', 'gpu_memory_preservation_ui', 'gs_final_ui', 'roll_off_factor_ui']:
                 value = float(value)
             elif key in ['use_teacache_ui', 'use_fp32_transformer_output_checkbox_ui']:
                 value = bool(value)
@@ -88,8 +97,9 @@ def load_settings_from_file(filepath, return_updates=True):
             value = default_values.get(key)
             gr.Warning(f"Invalid value for {key} in loaded settings. Reverting to default.")
         output_values.append(value)
-            
+
     return [gr.update(value=v) for v in output_values] if return_updates else output_values
+
 
 def get_initial_output_folder_from_settings():
     """
@@ -118,7 +128,8 @@ def get_initial_output_folder_from_settings():
 
 def save_workspace(*ui_values_tuple):
     """Prepares the full workspace settings as a JSON string for download."""
-    settings_to_save = dict(zip(shared_state.ALL_TASK_UI_KEYS, ui_values_tuple))
+    ui_keys_list = [key.value for key in shared_state.ALL_TASK_UI_KEYS]
+    settings_to_save = dict(zip(ui_keys_list, ui_values_tuple))
     json_data = json.dumps(settings_to_save, indent=4)
 
     try:
@@ -136,7 +147,8 @@ def save_as_default_workspace(*ui_values_tuple):
     """
     Saves the current UI settings as the default startup configuration.
     """
-    settings_to_save = dict(zip(shared_state.ALL_TASK_UI_KEYS, ui_values_tuple))
+    ui_keys_list = [key.value for key in shared_state.ALL_TASK_UI_KEYS]
+    settings_to_save = dict(zip(ui_keys_list, ui_values_tuple))
     save_settings_to_file(SETTINGS_FILENAME, settings_to_save)
     gr.Info(f"Default settings saved. Restart the application for changes to take effect.")
     return gr.update(visible=True), gr.update(visible=True)
@@ -145,20 +157,22 @@ def save_ui_and_image_for_refresh(*args_from_ui_controls_tuple):
     """Saves UI state and the current image to temporary files for session recovery."""
     pil_image = args_from_ui_controls_tuple[0]
     all_ui_values_tuple = args_from_ui_controls_tuple[1:]
-    full_params_map = dict(zip(shared_state.ALL_TASK_UI_KEYS, all_ui_values_tuple))
+    ui_keys_list = [key.value for key in shared_state.ALL_TASK_UI_KEYS]
+    full_params_map = dict(zip(ui_keys_list, all_ui_values_tuple))
     settings_to_save = full_params_map.copy()
 
     if pil_image and isinstance(pil_image, Image.Image):
         try:
-            creative_ui_values = [full_params_map.get(key) for key in shared_state.CREATIVE_UI_KEYS]
+            creative_ui_keys = [key.value for key in shared_state.CREATIVE_UI_KEYS]
+            creative_ui_values = [full_params_map.get(key) for key in creative_ui_keys]
             creative_params = metadata_manager.create_params_from_ui(shared_state.CREATIVE_UI_KEYS, creative_ui_values)
             pnginfo_obj = metadata_manager.create_pnginfo_obj(creative_params)
-            
+
             # Save the refresh image to a known temporary location
             refresh_image_path = os.path.join(tempfile.gettempdir(), REFRESH_IMAGE_FILENAME)
-            
+
             pil_image.save(refresh_image_path, "PNG", pnginfo=pnginfo_obj)
-            
+
             settings_to_save["refresh_image_path"] = refresh_image_path
             gr.Info(f"UI state saved, image written for refresh to {refresh_image_path}")
         except Exception as e:
@@ -174,7 +188,8 @@ def load_workspace(uploaded_file):
     """Loads a workspace from an uploaded JSON file."""
     if uploaded_file is None or not hasattr(uploaded_file, 'name') or not os.path.exists(uploaded_file.name):
         gr.Warning("No valid file selected or uploaded.")
-        return [gr.update()] * len(shared_state.ALL_TASK_UI_KEYS)
+        ui_keys_list = [key.value for key in shared_state.ALL_TASK_UI_KEYS]
+        return [gr.update()] * len(ui_keys_list)
 
     return load_settings_from_file(uploaded_file.name)
 
@@ -182,7 +197,7 @@ def load_workspace(uploaded_file):
 def load_workspace_on_start():
     """
     Finds the settings and refresh image file paths for application startup.
-    
+
     This function's only responsibility is to return the two file paths.
     It does NOT load the data or create UI updates. This is handled by
     subsequent functions in the switchboard's .then() chain.

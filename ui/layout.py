@@ -104,13 +104,15 @@ def create_ui():
                     components[K.SEGMENTS_TO_DECODE_CSV_UI] = gr.Textbox(label="Preview Segments CSV", value="")
                     with gr.Row():
                         components[K.GS_UI] = gr.Slider(label="Distilled CFG Start", minimum=1.0, maximum=32.0, value=10.0, step=0.01)
-                        components[K.GS_SCHEDULE_SHAPE_UI] = gr.Radio(["Off", "Linear"], label="Variable CFG", value="Off")
+                        components[K.GS_SCHEDULE_SHAPE_UI] = gr.Radio(["Off", "Linear", "Roll-off"], label="Variable CFG", value="Off")
                         components[K.GS_FINAL_UI] = gr.Slider(label="Distilled CFG End", minimum=1.0, maximum=32.0, value=10.0, step=0.01, interactive=False)
-                    components[K.CFG_UI] = gr.Slider(label="CFG (Real)", minimum=1.0, maximum=32.0, value=1.0, step=0.01)
+                    components[K.ROLL_OFF_START_UI] = gr.Slider(label="Roll-off Start %", minimum=0, maximum=100, value=75, step=1, visible=False)
+                    components[K.ROLL_OFF_FACTOR_UI] = gr.Slider(label="Roll-off Curve Factor", minimum=0.25, maximum=4.0, value=1.0, step=0.05, visible=False)
+                    components[K.CFG_UI] = gr.Slider(label="CFG (Real)", minimum=1.0, maximum=8.0, value=1.5, step=0.01)
                     components[K.STEPS_UI] = gr.Slider(label="Steps", minimum=1, maximum=100, value=25, step=1)
                     components[K.RS_UI] = gr.Slider(label="RS", minimum=0.0, maximum=32.0, value=0.0, step=0.01, visible=False)
 
-                with gr.Accordion("LoRA Settings", open=False, visible=False):
+                with gr.Accordion("LoRA Settings", open=False, visible=True):
                     gr.Markdown("🧪 Experimental LoRA support. Upload a `.safetensors` file. Applied before generation.")
                     components[K.LORA_UPLOAD_BUTTON_UI] = gr.UploadButton("Upload LoRA", file_types=[".safetensors"], file_count="single", size="sm")
                     with gr.Row(visible=False, variant="panel") as lora_row_0_ctx:

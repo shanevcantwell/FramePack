@@ -167,7 +167,25 @@ def _wire_queue_events(components: dict):
 
 def _wire_misc_control_events(components: dict):
     """Wires up other miscellaneous UI controls."""
-    components[K.GS_SCHEDULE_SHAPE_UI].change(fn=lambda choice: gr.update(interactive=(choice != "Off")), inputs=[components[K.GS_SCHEDULE_SHAPE_UI]], outputs=[components[K.GS_FINAL_UI]])
+
+    def update_scheduler_visibility(choice: str):
+        """Shows/hides scheduler sliders based on the selected schedule type."""
+        is_linear = (choice == "Linear")
+        is_rolloff = (choice == "Roll-off")
+        show_final_gs = is_linear or is_rolloff
+        show_rolloff_sliders = is_rolloff
+
+        return {
+            components[K.GS_FINAL_UI]: gr.update(visible=show_final_gs, interactive=show_final_gs),
+            components[K.ROLL_OFF_START_UI]: gr.update(visible=show_rolloff_sliders),
+            components[K.ROLL_OFF_FACTOR_UI]: gr.update(visible=show_rolloff_sliders),
+        }
+
+    components[K.GS_SCHEDULE_SHAPE_UI].change(
+        fn=update_scheduler_visibility,
+        inputs=[components[K.GS_SCHEDULE_SHAPE_UI]],
+        outputs=[components[k] for k in [K.GS_FINAL_UI, K.ROLL_OFF_START_UI, K.ROLL_OFF_FACTOR_UI]]
+    )
     for ctrl_key in [K.TOTAL_SECOND_LENGTH_UI, K.LATENT_WINDOW_SIZE_UI]:
         components[ctrl_key].change(fn=event_handlers.ui_update_total_segments, inputs=[components[K.TOTAL_SECOND_LENGTH_UI], components[K.LATENT_WINDOW_SIZE_UI]], outputs=[components[K.TOTAL_SEGMENTS_DISPLAY_UI]])
 

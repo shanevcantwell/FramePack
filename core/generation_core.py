@@ -18,6 +18,9 @@ from diffusers_helper.gradio.progress_bar import make_progress_bar_html
 from ui import metadata as metadata_manager
 from ui import shared_state
 from core import generation_utils
+from .generation_utils import generate_roll_off_schedule
+
+import traceback
 
 def _save_final_preview(history_latents, vae, job_id, task_id, outputs_folder, crf, output_queue_ref, high_vram):
     """
@@ -83,7 +86,11 @@ def worker(
     cfg,
     gs,
     gs_final,
-    gs_schedule_active,
+    # --- MODIFIED: Parameters for the new CFG scheduler ---
+    gs_schedule_shape,
+    roll_off_start,
+    roll_off_factor,
+    # --- End of modified parameters ---
     rs,
     preview_frequency,
     segments_to_decode_csv,
@@ -169,10 +176,12 @@ def worker(
             "cfg": cfg,
             "gs": gs,
             "gs_final": gs_final,
-            "gs_schedule_active": gs_schedule_active,
             "rs": rs,
             "preview_frequency": preview_frequency,
             "segments_to_decode_csv": segments_to_decode_csv,
+            "gs_schedule_shape": gs_schedule_shape,
+            "roll_off_start": roll_off_start,
+            "roll_off_factor": roll_off_factor,
         }
         metadata_obj.add_text("parameters", json.dumps(params_to_save_in_metadata))
         initial_image_with_params_path = os.path.join(
@@ -393,147 +402,155 @@ def worker(
                 )
 
             current_segment_gs_to_use = initial_gs_from_ui
-            if gs_schedule_active and total_latent_sections > 1:
-                progress_for_gs = (
-                    latent_padding_iteration / (total_latent_sections - 1)
-                    if total_latent_sections > 1
-                    else 0
-                )
-                current_segment_gs_to_use = (
-                    initial_gs_from_ui
-                    + (gs_final_value_for_schedule - initial_gs_from_ui)
-                    * progress_for_gs
-                )
+            # Only apply a schedule if one is selected and there's more than one segment.
+            if gs_schedule_shape != 'Off' and total_latent_sections > 1:
+                # Calculate progress as a value from 0.0 to 1.0 over the segments.
+                progress = latent_padding_iteration / (total_latent_sections - 1)
 
-            generated_latents = sample_hunyuan(
-                transformer=transformer,
-                sampler="unipc",
-                width=width,
-                height=height,
-                frames=num_frames,
-                real_guidance_scale=cfg,
-                distilled_guidance_scale=current_segment_gs_to_use,
-                guidance_rescale=rs,
-                num_inference_steps=steps,
-                generator=rnd,
-                prompt_embeds=llama_vec.to(transformer.device),
-                prompt_embeds_mask=llama_attention_mask.to(transformer.device),
-                prompt_poolers=clip_l_pooler.to(transformer.device),
-                negative_prompt_embeds=llama_vec_n.to(transformer.device),
-                negative_prompt_embeds_mask=llama_attention_mask_n.to(
-                    transformer.device
-                ),
-                negative_prompt_poolers=clip_l_pooler_n.to(transformer.device),
-                device=transformer.device,
-                dtype=transformer.dtype,
-                image_embeddings=image_encoder_last_hidden_state.to(transformer.device),
-                latent_indices=latent_indices.to(transformer.device),
-                clean_latents=clean_latents.to(
-                    transformer.device, dtype=transformer.dtype
-                ),
-                clean_latent_indices=clean_latent_indices.to(transformer.device),
-                clean_latents_2x=clean_latents_2x.to(
-                    transformer.device, dtype=transformer.dtype
-                ),
-                clean_latent_2x_indices=clean_latent_2x_indices.to(transformer.device),
-                clean_latents_4x=clean_latents_4x.to(
-                    transformer.device, dtype=transformer.dtype
-                ),
-                clean_latent_4x_indices=clean_latent_4x_indices.to(transformer.device),
-                callback=callback_diffusion_step,
-            )
+                if gs_schedule_shape == 'Linear':
+                    # Linear interpolation from start to end CFG.
+                    current_segment_gs_to_use = initial_gs_from_ui + (gs_final_value_for_schedule - initial_gs_from_ui) * progress
+               
+                elif gs_schedule_shape == 'Roll-off':
+                    # Roll-off logic adapted for per-segment scheduling.
+                    roll_off_start_point = roll_off_start / 100.0
+                    if progress < roll_off_start_point:
+                        current_segment_gs_to_use = initial_gs_from_ui
+                    else:
+                        roll_off_progress = (progress - roll_off_start_point) / (1.0 - roll_off_start_point)
+                        curved_progress = roll_off_progress ** roll_off_factor
+                        current_segment_gs_to_use = initial_gs_from_ui (gs_final_value_for_schedule - initial_gs_from_ui) * curved_progress
 
-            if is_last_section:
-                generated_latents = torch.cat(
-                    [start_latent.to(generated_latents), generated_latents], dim=2
-                )
 
-            total_generated_latent_frames += int(generated_latents.shape[2])
-            history_latents = torch.cat(
-                [generated_latents.to(history_latents), history_latents], dim=2
-            )
-
-            if not high_vram:
-                offload_model_from_device_for_memory_preservation(
-                    transformer, target_device=gpu, preserved_memory_gb=8
-                )
-                load_model_as_complete(vae, target_device=gpu)
-
-            real_history_latents = history_latents[
-                :, :, :total_generated_latent_frames, :, :
-            ]
-
-            if history_pixels is None:
-                history_pixels = vae_decode(real_history_latents, vae).cpu()
-            else:
-                section_latent_frames = (
-                    (latent_window_size * 2 + 1)
-                    if is_last_section
-                    else (latent_window_size * 2)
-                )
-                overlapped_frames = latent_window_size * 4 - 3
-                current_pixels = vae_decode(
-                    real_history_latents[:, :, :section_latent_frames], vae
-                ).cpu()
-                history_pixels = soft_append_bcthw(
-                    current_pixels, history_pixels, overlapped_frames
+                generated_latents = sample_hunyuan(
+                    transformer=transformer,
+                    sampler="unipc",
+                    width=width,
+                    height=height,
+                    frames=num_frames,
+                    real_guidance_scale=cfg,
+                    distilled_guidance_scale=current_segment_gs_to_use,
+                    guidance_rescale=rs,
+                    num_inference_steps=steps,
+                    generator=rnd,
+                    prompt_embeds=llama_vec.to(transformer.device),
+                    prompt_embeds_mask=llama_attention_mask.to(transformer.device),
+                    prompt_poolers=clip_l_pooler.to(transformer.device),
+                    negative_prompt_embeds=llama_vec_n.to(transformer.device),
+                    negative_prompt_embeds_mask=llama_attention_mask_n.to(
+                        transformer.device
+                    ),
+                    negative_prompt_poolers=clip_l_pooler_n.to(transformer.device),
+                    device=transformer.device,
+                    dtype=transformer.dtype,
+                    image_embeddings=image_encoder_last_hidden_state.to(transformer.device),
+                    latent_indices=latent_indices.to(transformer.device),
+                    clean_latents=clean_latents.to(
+                        transformer.device, dtype=transformer.dtype
+                    ),
+                    clean_latent_indices=clean_latent_indices.to(transformer.device),
+                    clean_latents_2x=clean_latents_2x.to(
+                        transformer.device, dtype=transformer.dtype
+                    ),
+                    clean_latent_2x_indices=clean_latent_2x_indices.to(transformer.device),
+                    clean_latents_4x=clean_latents_4x.to(
+                        transformer.device, dtype=transformer.dtype
+                    ),
+                    clean_latent_4x_indices=clean_latent_4x_indices.to(transformer.device),
+                    callback=callback_diffusion_step,
                 )
 
-            if not high_vram:
-                unload_complete_models()
-
-            current_video_frame_count = history_pixels.shape[2]
-
-            # --- Gemini start again
-            # --- Unified and Corrected MP4 Saving Logic ---
-            should_save_mp4_this_iteration = False
-
-            # Condition 1: Always save the very first segment (iteration 0)
-            if latent_padding_iteration == 0:
-                should_save_mp4_this_iteration = True
-            # Condition 2: Always save the last segment
-            elif is_last_section:
-                should_save_mp4_this_iteration = True
-            # Condition 3: Save if the user specified this segment number (1-indexed)
-            elif (
-                parsed_segments_to_decode_set
-                and current_loop_segment_number in parsed_segments_to_decode_set
-            ):
-                should_save_mp4_this_iteration = True
-            # Condition 4: Save based on the periodic preview_frequency setting
-            elif (
-                preview_frequency > 0
-                and (current_loop_segment_number % preview_frequency == 0)
-            ):
-                should_save_mp4_this_iteration = True
-
-            if should_save_mp4_this_iteration:
-                segment_mp4_filename = os.path.join(
-                    outputs_folder,
-                    f"{job_id}_segment_{current_loop_segment_number}_frames_{current_video_frame_count}.mp4",
-                )
-                save_bcthw_as_mp4(
-                    history_pixels, segment_mp4_filename, fps=30, crf=mp4_crf
-                )
-                final_output_filename = segment_mp4_filename
-                print(
-                    f"Task {task_id}: SAVED MP4 for segment {current_loop_segment_number} to {segment_mp4_filename}. Total video frames: {current_video_frame_count}"
-                )
-                output_queue_ref.push(
-                    (
-                        "file",
-                        (
-                            task_id,
-                            segment_mp4_filename,
-                            f"Segment {current_loop_segment_number} MP4 saved ({current_video_frame_count} frames)",
-                        ),
+                if is_last_section:
+                    generated_latents = torch.cat(
+                        [start_latent.to(generated_latents), generated_latents], dim=2
                     )
+
+                total_generated_latent_frames += int(generated_latents.shape[2])
+                history_latents = torch.cat(
+                    [generated_latents.to(history_latents), history_latents], dim=2
                 )
-            else:
-                print(
-                    f"Task {task_id}: SKIPPED MP4 save for intermediate segment {current_loop_segment_number}."
-                )
-            history_latents_for_abort = real_history_latents.clone()
+
+                if not high_vram:
+                    offload_model_from_device_for_memory_preservation(
+                        transformer, target_device=gpu, preserved_memory_gb=8
+                    )
+                    load_model_as_complete(vae, target_device=gpu)
+
+                real_history_latents = history_latents[
+                    :, :, :total_generated_latent_frames, :, :
+                ]
+
+                if history_pixels is None:
+                    history_pixels = vae_decode(real_history_latents, vae).cpu()
+                else:
+                    section_latent_frames = (
+                        (latent_window_size * 2 + 1)
+                        if is_last_section
+                        else (latent_window_size * 2)
+                    )
+                    overlapped_frames = latent_window_size * 4 - 3
+                    current_pixels = vae_decode(
+                        real_history_latents[:, :, :section_latent_frames], vae
+                    ).cpu()
+                    history_pixels = soft_append_bcthw(
+                        current_pixels, history_pixels, overlapped_frames
+                    )
+
+                if not high_vram:
+                    unload_complete_models()
+
+                current_video_frame_count = history_pixels.shape[2]
+
+                # --- Gemini start again
+                # --- Unified and Corrected MP4 Saving Logic ---
+                should_save_mp4_this_iteration = False
+
+                # Condition 1: Always save the very first segment (iteration 0)
+                if latent_padding_iteration == 0:
+                    should_save_mp4_this_iteration = True
+                # Condition 2: Always save the last segment
+                elif is_last_section:
+                    should_save_mp4_this_iteration = True
+                # Condition 3: Save if the user specified this segment number (1-indexed)
+                elif (
+                    parsed_segments_to_decode_set
+                    and current_loop_segment_number in parsed_segments_to_decode_set
+                ):
+                    should_save_mp4_this_iteration = True
+                # Condition 4: Save based on the periodic preview_frequency setting
+                elif (
+                    preview_frequency > 0
+                    and (current_loop_segment_number % preview_frequency == 0)
+                ):
+                    should_save_mp4_this_iteration = True
+
+                if should_save_mp4_this_iteration:
+                    segment_mp4_filename = os.path.join(
+                        outputs_folder,
+                        f"{job_id}_segment_{current_loop_segment_number}_frames_{current_video_frame_count}.mp4",
+                    )
+                    save_bcthw_as_mp4(
+                        history_pixels, segment_mp4_filename, fps=30, crf=mp4_crf
+                    )
+                    final_output_filename = segment_mp4_filename
+                    print(
+                        f"Task {task_id}: SAVED MP4 for segment {current_loop_segment_number} to {segment_mp4_filename}. Total video frames: {current_video_frame_count}"
+                    )
+                    output_queue_ref.push(
+                        (
+                            "file",
+                            (
+                                task_id,
+                                segment_mp4_filename,
+                                f"Segment {current_loop_segment_number} MP4 saved ({current_video_frame_count} frames)",
+                            ),
+                        )
+                    )
+                else:
+                    print(
+                        f"Task {task_id}: SKIPPED MP4 save for intermediate segment {current_loop_segment_number}."
+                    )
+                history_latents_for_abort = real_history_latents.clone()
 
         # --- Post-loop logic ---
         # If the loop was broken by a graceful abort (level 1), save the preview.

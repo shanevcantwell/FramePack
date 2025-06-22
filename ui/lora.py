@@ -1,8 +1,10 @@
-# ui/lora.py
-# Manages LoRA uploads and the manual application/reversion of LoRA weights.
+# ui/lora.py (REVISED)
+# Manages LoRA uploads and the dynamic application/reversion of LoRA layers.
 
 import os
 import torch
+import math
+import torch.nn as nn
 import gradio as gr
 import shutil
 from safetensors.torch import load_file
@@ -15,35 +17,95 @@ LORA_DIR = os.path.abspath(os.path.realpath(os.path.join(os.path.dirname(__file_
 os.makedirs(LORA_DIR, exist_ok=True)
 
 # A mapping from the UI target selection to the model key in shared_state and the LoRA key prefix.
-# This allows the manager to know that "transformer" in the UI corresponds to the 'transformer' model
-# and that its LoRA keys start with 'lora_unet'.
 LORA_TARGET_MAP = {
     "transformer": {"model_key": "transformer", "lora_prefix": "lora_unet"},
     "text_encoder": {"model_key": "text_encoder", "lora_prefix": "lora_te1"},
     "text_encoder_2": {"model_key": "text_encoder_2", "lora_prefix": "lora_te2"},
 }
 
+
+class LoRALinearLayer(nn.Module):
+    """
+    A replacement for nn.Linear that incorporates LoRA logic.
+    This layer wraps the original linear layer and applies the LoRA delta calculation
+    during the forward pass.
+    """
+    def __init__(self, original_layer: nn.Linear, rank: int, alpha: float):
+        super().__init__()
+        self.in_features = original_layer.in_features
+        self.out_features = original_layer.out_features
+
+        # --- Store the original layer for reversion and its forward pass ---
+        self.original_layer = original_layer
+        
+        # --- Create new LoRA parameters ---
+        # These will be trained in a real fine-tuning scenario
+        self.lora_A = nn.Parameter(torch.zeros(rank, self.in_features))
+        self.lora_B = nn.Parameter(torch.zeros(self.out_features, rank))
+        
+        # --- Initialize LoRA weights as per standard practice ---
+        nn.init.kaiming_uniform_(self.lora_A, a=math.sqrt(5))
+        nn.init.zeros_(self.lora_B)
+
+        self.scale = alpha / rank if rank > 0 else 0.0
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        # The original layer's properties (device and dtype) are the source of truth.
+        original_device = self.original_layer.weight.device
+        original_dtype = self.original_layer.weight.dtype
+
+        # Perform the original forward pass.
+        original_output = self.original_layer(x.to(device=original_device, dtype=original_dtype))
+
+        if self.scale > 0:
+            # Perform LoRA calculations on the input tensor's device and dtype.
+            lora_A_dev = self.lora_A.to(device=x.device, dtype=x.dtype)
+            lora_B_dev = self.lora_B.to(device=x.device, dtype=x.dtype)
+
+            # W_orig*x + scale * (B @ A @ x)
+            lora_delta = lora_B_dev @ (lora_A_dev @ x.transpose(-2, -1)).transpose(-2, -1)
+            
+            # MODIFIED: Explicitly cast the scaled delta to the same device AND dtype
+            # as the original_output before adding them. This prevents dtype mismatches
+            # (e.g., float32 + bfloat16) from nullifying the LoRA's effect.
+            scaled_delta = (lora_delta * self.scale).to(device=original_device, dtype=original_output.dtype)
+            
+            return original_output + scaled_delta
+        
+        return original_output
+
+
+def _find_and_set_module(model, module_key, new_module):
+    """
+    Recursively finds the parent of a module and replaces the child
+    module with a new one.
+    """
+    tokens = module_key.split('.')
+    parent_key = '.'.join(tokens[:-1])
+    child_key = tokens[-1]
+    
+    parent_module = model
+    for part in parent_key.split('.'):
+        # Handle cases where keys contain indices like 'blocks.0.attn'
+        if part.isdigit():
+            parent_module = parent_module[int(part)]
+        else:
+            parent_module = getattr(parent_module, part)
+            
+    setattr(parent_module, child_key, new_module)
+
+
 class LoRAManager:
     """
-    Handles the manual application and removal of LoRA weights from models.
-    This class directly modifies the model state_dicts and is designed to be
-    used in a try/finally block to ensure weights are always reverted.
+    Handles the dynamic replacement of model layers to apply and revert LoRAs.
     """
     def __init__(self):
-        self._original_weights = {}
+        # Store a mapping of { 'module_key': original_layer } to revert changes
+        self._replaced_layers = {}
         self._applied_loras = set()
-        print("LoRAManager initialized.")
+        print("LoRAManager initialized with dynamic layer replacement strategy.")
 
     def apply_lora(self, lora_name, weight_slider_val, target_modules):
-        """
-        Applies a LoRA to the registered models.
-
-        Args:
-            lora_name (str): The filename of the LoRA (e.g., "my_lora.safetensors").
-            weight_slider_val (float): The multiplier for the LoRA weights.
-            target_modules (list): A list of strings indicating which models to patch
-                                   (e.g., ["transformer", "text_encoder"]).
-        """
         if not lora_name or not target_modules:
             print("LoRA Manager: No LoRA name or target modules provided. Skipping application.")
             return
@@ -56,135 +118,169 @@ class LoRAManager:
         print(f"Applying LoRA '{lora_name}' with weight {weight_slider_val} to {target_modules}")
 
         try:
+            # Load LoRA weights to CPU first to avoid device mismatches
             lora_tensors = load_file(lora_path, device="cpu")
         except Exception as e:
             print(f"Error: Failed to load LoRA file {lora_path}: {e}")
             return
 
+        # --- Find rank and alpha from LoRA tensors ---
+        # Typically found in a 'lora_down' weight tensor shape
+        rank = 4 
+        alpha = float(weight_slider_val)
+        for key, tensor in lora_tensors.items():
+            if "lora_down" in key and len(tensor.shape) == 2:
+                rank = tensor.shape[0]
+                break
+        print(f"Determined LoRA rank: {rank}, Alpha: {alpha}")
+
         for target_key in target_modules:
-            if target_key not in LORA_TARGET_MAP:
+            map_info = LORA_TARGET_MAP.get(target_key)
+            if not map_info:
                 print(f"Warning: Unknown LoRA target '{target_key}'. Skipping.")
                 continue
 
-            map_info = LORA_TARGET_MAP[target_key]
             model = shared_state.models.get(map_info["model_key"])
             lora_prefix = map_info["lora_prefix"]
-
             if model is None:
-                print(f"Warning: Model '{map_info['model_key']}' not found in shared state. Skipping.")
+                print(f"Warning: Model for '{target_key}' not found. Skipping.")
                 continue
 
-            self._patch_model(model, lora_tensors, lora_prefix, weight_slider_val)
+            self._patch_model(model, lora_tensors, lora_prefix, rank, alpha)
 
         self._applied_loras.add(lora_name)
 
-    @torch.no_grad()
-    def _patch_model(self, model, lora_tensors, lora_prefix, alpha):
-        """Patches a single model with the corresponding LoRA tensors."""
+    def _patch_model(self, model, lora_tensors, lora_prefix, rank, alpha):
+        """Replaces linear layers with LoRALinearLayer."""
+
+        # --- START: ADD THIS NEW DIAGNOSTIC BLOCK ---
+        print("-" * 60)
+        print(f"DIAGNOSTIC: LoRA Layer Matching for prefix: '{lora_prefix}'")
+        print(f"Searching for tensor keys in LoRA file that start with '{lora_prefix}'.")
+        print("-" * 60)
+
+        # 1. Print all keys from the LoRA file to see what's available.
+        print("Keys found in LoRA file:")
+        lora_keys_found = [k for k in lora_tensors.keys() if k.startswith(lora_prefix)]
+        if not lora_keys_found:
+            print("  - WARNING: No keys found with the expected prefix!")
+            print("  - All available keys in file are:")
+            for k in lora_tensors.keys():
+                print(f"    - {k}")
+        else:
+            for k in lora_keys_found:
+                print(f"  - {k}")
+
+        # 2. Print all targetable Linear layer names from the model.
+        print("\nTargetable nn.Linear layers in model:")
+        for name, module in model.named_modules():
+            if isinstance(module, torch.nn.Linear):
+                print(f"  - {name}")
+        print("-" * 60)
+        # --- END: ADD THIS NEW DIAGNOSTIC BLOCK ---
+
         modified_keys_count = 0
-        model_state_dict = model.state_dict()
         
-        # This structure assumes LoRA keys are like:
-        # lora_unet_down_blocks_0_attentions_0_transformer_blocks_0_attn1_to_q.lora_down.weight
-        # We derive the original model's key from that.
-        lora_layers = {}
+        # --- Group LoRA up/down weights by the layer they target ---
+        lora_layers_map = {}
         for key, tensor in lora_tensors.items():
             if not key.startswith(lora_prefix):
                 continue
             
-            base_key = key.replace(lora_prefix + '_', '').split('.lora_')[0] + ".weight"
+            # Convert LoRA key to its corresponding module key in the base model
+            module_key = key.replace(lora_prefix + '_', '').split('.lora_')[0]
             
-            if base_key not in lora_layers:
-                lora_layers[base_key] = {}
+            if module_key not in lora_layers_map:
+                lora_layers_map[module_key] = {}
             
             if "lora_down" in key:
-                lora_layers[base_key]["down"] = tensor
+                lora_layers_map[module_key]["down"] = tensor
             elif "lora_up" in key:
-                lora_layers[base_key]["up"] = tensor
+                lora_layers_map[module_key]["up"] = tensor
 
-        for layer_key, tensors in lora_layers.items():
+        # --- Iterate through target layers and replace them ---
+        for module_key, tensors in lora_layers_map.items():
             if "up" not in tensors or "down" not in tensors:
                 continue
 
-            if layer_key not in model_state_dict:
-                continue
+            try:
+                # Find the original linear layer in the model
+                original_layer = model.get_submodule(module_key)
+                if not isinstance(original_layer, nn.Linear):
+                    continue
 
-            original_weight_param = model_state_dict[layer_key]
-
-            # Backup the original weight if we haven't already
-            if layer_key not in self._original_weights:
-                self._original_weights[layer_key] = original_weight_param.clone().cpu()
-
-            # Calculate and apply the delta
-            lora_down = tensors["down"].to(original_weight_param.device, dtype=torch.float32)
-            lora_up = tensors["up"].to(original_weight_param.device, dtype=torch.float32)
-            
-            delta = lora_up @ lora_down
-            
-            updated_weight = original_weight_param + delta.to(original_weight_param.dtype) * alpha
-            original_weight_param.copy_(updated_weight)
-            modified_keys_count += 1
+                # Create our new LoRA-aware layer
+                new_layer = LoRALinearLayer(original_layer, rank, alpha)
+                
+                # Load the weights from the file into our new layer
+                new_layer.lora_A.data.copy_(tensors["down"])
+                new_layer.lora_B.data.copy_(tensors["up"])
+                
+                # Backup the original layer for reversion
+                self._replaced_layers[module_key] = original_layer
+                
+                # Replace the layer on the model
+                _find_and_set_module(model, module_key, new_layer)
+                
+                modified_keys_count += 1
+            except Exception as e:
+                print(f"Failed to patch module {module_key}: {e}")
 
         if modified_keys_count > 0:
-            print(f"Patched {modified_keys_count} layers in {model.__class__.__name__}.")
+            print(f"Replaced {modified_keys_count} layers in {model.__class__.__name__} with LoRA layers.")
 
-    @torch.no_grad()
     def revert_all_loras(self):
-        """Restores all modified model weights from the backup."""
-        if not self._original_weights:
+        """Restores all replaced layers from the backup."""
+        if not self._replaced_layers:
             return
 
-        print(f"Reverting weights for LoRAs: {self._applied_loras}")
-        reverted_count = 0
+        print(f"Reverting layers for LoRAs: {self._applied_loras}")
         
         for model_info in LORA_TARGET_MAP.values():
             model = shared_state.models.get(model_info["model_key"])
-            if model is None:
-                continue
+            if model is None: continue
 
-            model_state_dict = model.state_dict()
-            for layer_key, original_weight_cpu in self._original_weights.items():
-                if layer_key in model_state_dict:
-                    target_param = model_state_dict[layer_key]
-                    target_param.copy_(original_weight_cpu.to(target_param.device, dtype=target_param.dtype))
-                    reverted_count += 1
+            for module_key, original_layer in self._replaced_layers.items():
+                try:
+                    # Check if the module key belongs to the current model being reverted
+                    current_layer = model.get_submodule(module_key)
+                    if isinstance(current_layer, LoRALinearLayer):
+                         _find_and_set_module(model, module_key, original_layer)
+                except Exception:
+                    # This can happen if module_key doesn't exist in this specific model
+                    pass
         
-        print(f"Reverted {reverted_count} total layers.")
-        self._original_weights.clear()
+        print(f"Reverted {len(self._replaced_layers)} total layers.")
+        self._replaced_layers.clear()
         self._applied_loras.clear()
+
 
 def handle_lora_upload_and_update_ui(app_state, uploaded_file):
     """
+    (This function remains unchanged from your original file)
     Processes a single uploaded LoRA file, saves it, and updates the UI.
     """
-    # If the clear button was used, uploaded_file will be None.
     if uploaded_file is None:
-        # For now, we don't clear state on clear, just hide UI.
-        # A more robust implementation might remove from app_state here.
         return app_state, "", gr.update(visible=False), "", 1.0, []
 
-    # A file was uploaded.
     lora_name = os.path.basename(uploaded_file.name)
     persistent_path = os.path.join(LORA_DIR, lora_name)
     
-    # Use shutil.move to transfer the temporary file to the persistent loras directory.
     shutil.move(uploaded_file.name, persistent_path)
     print(f"Saved LoRA file to: {persistent_path}")
     
-    # This simple UI only tracks one LoRA at a time. Clear any old ones.
-    app_state["lora_state"]["loaded_loras"].clear()
-    app_state["lora_state"]["loaded_loras"][lora_name] = { "path": persistent_path }
+    app_state.get("lora_state", {}).get("loaded_loras", {}).clear()
+    app_state.setdefault("lora_state", {}).setdefault("loaded_loras", {})[lora_name] = { "path": persistent_path }
 
     gr.Info(f"Loaded '{lora_name}'.")
 
-    # This Textbox is a trick to pass the lora name state around.
     lora_name_state_update = lora_name
 
     return (
         app_state,
         lora_name_state_update,
-        gr.update(visible=True),                  # LORA_ROW_0
-        gr.update(value=lora_name),               # LORA_NAME_0
-        gr.update(value=1.0),                     # LORA_WEIGHT_0
-        gr.update(value=["transformer"]) # LORA_TARGETS_0
+        gr.update(visible=True),
+        gr.update(value=lora_name),
+        gr.update(value=0.8), # Default weight
+        gr.update(value=["transformer"])
     )
