@@ -71,7 +71,9 @@ def main():
         "cuda_version",
         type=int,
         help=f"The target CUDA version (e.g., 121, 126). Must be between {MIN_CUDA_VERSION_SUPPORTED_BY_SCRIPT} and {MAX_CUDA_VERSION_SUPPORTED_BY_SCRIPT} (inclusive). "
-             f"Note: FramePack specifically requires torch>={REQUIRED_TORCH_VERSION}+cu{REQUIRED_CUDA_FOR_FRAME_PACK}."
+             f"Note: FramePack specifically requires torch>={REQUIRED_TORCH_VERSION}+cu{REQUIRED_CUDA_FOR_FRAME_PACK}. "
+             f"Learn more about the NVIDIA CUDA toolkit and download a version from: "
+             f"https://developer.nvidia.com/cuda-toolkit-archive"
     )
     args = parser.parse_args()
     target_cuda_version = args.cuda_version

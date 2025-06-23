@@ -187,7 +187,6 @@ demo_gradio_svc.py
 .venv_goan/
 .vs/
 *.json
-*.sh
 hf_download
 *.zip
 *Copy*.py
