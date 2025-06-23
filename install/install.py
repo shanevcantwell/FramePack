@@ -5,7 +5,8 @@ import sys
 import platform
 import shutil
 import venv
-import re # Added for robust nvcc version parsing
+import re 
+import stat
 
 # --- Configuration Variables ---
 MIN_CUDA_VERSION_SUPPORTED_BY_SCRIPT = 121
@@ -279,15 +280,128 @@ except Exception as e:
         if os.path.exists(temp_verify_script_path):
             os.remove(temp_verify_script_path)
 
+    # --- Generate and Configure Launchers ---
+    print_info("--- Generating Project Launchers ---")
+
+    project_root_dir = base_dir # This is where we want the launchers to be
+
+    # Define content for run.sh
+    run_sh_content = f"""#!/bin/bash
+# This script activates the virtual environment and runs src/goan.py,
+# passing all command-line arguments to the Python script.
+
+VENV_DIR_NAME="{VENV_DIR_NAME}"
+BASE_DIR="$(dirname "$(realpath "$0")")" # Resolve full path of script's directory
+VENV_PATH="${{BASE_DIR}}/${{VENV_DIR_NAME}}"
+
+if [ ! -d "${{VENV_PATH}}" ]; then
+    echo "ERROR: Virtual environment not found at ${{VENV_PATH}}" >&2
+    echo "Please run the installation script first: install/install.sh <cuda_version>" >&2
+    exit 1
+fi
+
+PYTHON_EXECUTABLE="${{VENV_PATH}}/bin/python"
+if [ ! -f "${{PYTHON_EXECUTABLE}}" ]; then
+    echo "ERROR: Python executable not found in virtual environment at ${{PYTHON_EXECUTABLE}}" >&2
+    echo "Virtual environment might be corrupted. Consider recreating it." >&2
+    exit 1
+fi
+
+GOAN_SCRIPT="src/goan.py" # Relative to project root
+if [ ! -f "${{BASE_DIR}}/${{GOAN_SCRIPT}}" ]; then
+    echo "ERROR: Main script goan.py not found at ${{BASE_DIR}}/${{GOAN_SCRIPT}}" >&2
+    exit 1
+fi
+
+echo "Running goan.py with arguments: $@"
+"${{PYTHON_EXECUTABLE}}" "${{BASE_DIR}}/${{GOAN_SCRIPT}}" "$@"
+
+if [ $? -eq 0 ]; then
+    echo "goan.py executed successfully."
+else
+    echo "ERROR: goan.py encountered an error." >&2
+    exit 1
+fi
+"""
+    # Define content for run.bat
+    run_bat_content = f"""@echo off
+REM This script activates the virtual environment and runs src/goan.py,
+REM passing all command-line arguments to the Python script.
+
+SET VENV_DIR_NAME={VENV_DIR_NAME}
+REM %~dp0 gets the drive letter and path of the batch file itself.
+SET "BASE_DIR=%~dp0"
+
+SET "VENV_PATH=%BASE_DIR%%VENV_DIR_NAME%"
+
+IF NOT EXIST "%VENV_PATH%" (
+    ECHO ERROR: Virtual environment not found at "%VENV_PATH%"
+    ECHO Please run the installation script first: install\\install.bat ^<cuda_version^>
+    GOTO :EOF
+)
+
+SET "PYTHON_EXECUTABLE=%VENV_PATH%\\Scripts\\python.exe"
+
+IF NOT EXIST "%PYTHON_EXECUTABLE%" (
+    ECHO ERROR: Python executable not found in virtual environment at "%PYTHON_EXECUTABLE%"
+    ECHO Virtual environment might be corrupted. Consider recreating it.
+    GOTO :EOF
+)
+
+SET "GOAN_SCRIPT=src\\goan.py"
+IF NOT EXIST "%BASE_DIR%%GOAN_SCRIPT%" (
+    ECHO ERROR: Main script goan.py not found at "%BASE_DIR%%GOAN_SCRIPT%"
+    GOTO :EOF
+)
+
+ECHO Running goan.py with arguments: %*
+"%PYTHON_EXECUTABLE%" "%BASE_DIR%%GOAN_SCRIPT%" %*
+
+IF %ERRORLEVEL% NEQ 0 (
+    ECHO ERROR: goan.py encountered an error.
+    EXIT /B %ERRORLEVEL%
+) ELSE (
+    ECHO goan.py executed successfully.
+)
+"""
+
+    run_sh_path = os.path.join(project_root_dir, "run_goan.sh") # Suggesting unique name
+    run_bat_path = os.path.join(project_root_dir, "run_goan.bat") # Suggesting unique name
+
+    # Write run_goan.sh
+    try:
+        with open(run_sh_path, "w") as f:
+            f.write(run_sh_content)
+        # Set executable permissions for the shell script
+        os.chmod(run_sh_path, stat.S_IRWXU | stat.S_IRGRP | stat.S_IXGRP | stat.S_IROTH | stat.S_IXOTH) # 0o755
+        print_success(f"Launcher '{os.path.basename(run_sh_path)}' created and made executable.")
+    except Exception as e:
+        print_warning(f"Could not create or make '{os.path.basename(run_sh_path)}' executable: {e}")
+
+    # Write run_goan.bat
+    try:
+        with open(run_bat_path, "w") as f:
+            f.write(run_bat_content)
+        print_success(f"Launcher '{os.path.basename(run_bat_path)}' created.")
+    except Exception as e:
+        print_warning(f"Could not create '{os.path.basename(run_bat_path)}': {e}")
+
 
     print("\n" + "="*50)
     print_success("Installation complete!")
-    print(f"To activate the virtual environment later:")
+    print("Your project is ready.")
+    print(f"\nTo activate the virtual environment manually for Python development:")
     if platform.system() == "Windows":
-        print(f"  Open PowerShell/CMD and run: .\\{VENV_DIR_NAME}\\Scripts\\activate")
+        print(f"  Open PowerShell/CMD in the project root and run: .\\{VENV_DIR_NAME}\\Scripts\\activate")
     else:
-        print(f"  Open your shell and run: source ./{VENV_DIR_NAME}/bin/activate")
+        print(f"  Open your shell in the project root and run: source ./{VENV_DIR_NAME}/bin/activate")
     print("To deactivate, simply run: deactivate")
+    print(f"To launch 'goan.py', use the generated launchers:")
+    if platform.system() == "Windows":
+        print(f"  From your project root (where '{os.path.basename(run_bat_path)}' is), run: .\\{os.path.basename(run_bat_path)} [your_goan_arguments]")
+    else:
+        print(f"  From your project root (where '{os.path.basename(run_sh_path)}' is), run: ./{os.path.basename(run_sh_path)} [your_goan_arguments]")
+    
     print("="*50 + "\n")
 
 if __name__ == "__main__":
