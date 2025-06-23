@@ -24,17 +24,16 @@ models = {}
 # handler to enable the autosave functionality on browser close or exit.
 global_state_for_autosave = {}
 
-# ADDED: Dictionary to hold system-level information detected at startup.
+# Dictionary to hold system-level information detected at startup.
 system_info = {
     'is_legacy_gpu': False,
 }
 
 
 # --- UI and Parameter Mapping Constants ---
-# ADDED: Centralized list of UI component keys for LoRA management.
+# Centralized list of UI component keys for LoRA management.
 LORA_UI_KEYS = [K.LORA_UPLOAD_BUTTON_UI, K.LORA_ROW_0]
 
-# MODIFIED: Added the Roll-off UI component keys to the list of creative parameters.
 CREATIVE_UI_KEYS = [
     K.PROMPT_UI, K.N_PROMPT_UI, K.TOTAL_SECOND_LENGTH_UI, K.SEED_UI, K.PREVIEW_FREQUENCY_UI,
     K.SEGMENTS_TO_DECODE_CSV_UI, K.GS_UI, K.GS_SCHEDULE_SHAPE_UI, K.GS_FINAL_UI,
@@ -47,7 +46,6 @@ ENVIRONMENT_UI_KEYS = [
 ]
 ALL_TASK_UI_KEYS = CREATIVE_UI_KEYS + ENVIRONMENT_UI_KEYS
 
-# MODIFIED: Added mappings for the Roll-off parameters.
 # This is the single source of truth for converting UI component names to worker parameter names.
 UI_TO_WORKER_PARAM_MAP = {
     K.PROMPT_UI: 'prompt',

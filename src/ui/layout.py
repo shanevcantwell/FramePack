@@ -4,7 +4,7 @@
 import gradio as gr
 from gradio_modal import Modal
 
-# Import the new ComponentKey enum and workspace manager
+# Import ComponentKey enum and workspace manager
 from .enums import ComponentKey as K
 from . import workspace as workspace_manager
 

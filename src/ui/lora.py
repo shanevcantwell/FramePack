@@ -65,7 +65,7 @@ class LoRALinearLayer(nn.Module):
             # W_orig*x + scale * (B @ A @ x)
             lora_delta = lora_B_dev @ (lora_A_dev @ x.transpose(-2, -1)).transpose(-2, -1)
             
-            # MODIFIED: Explicitly cast the scaled delta to the same device AND dtype
+            # Explicitly cast the scaled delta to the same device AND dtype
             # as the original_output before adding them. This prevents dtype mismatches
             # (e.g., float32 + bfloat16) from nullifying the LoRA's effect.
             scaled_delta = (lora_delta * self.scale).to(device=original_device, dtype=original_output.dtype)
@@ -152,32 +152,6 @@ class LoRAManager:
 
     def _patch_model(self, model, lora_tensors, lora_prefix, rank, alpha):
         """Replaces linear layers with LoRALinearLayer."""
-
-        # --- START: ADD THIS NEW DIAGNOSTIC BLOCK ---
-        print("-" * 60)
-        print(f"DIAGNOSTIC: LoRA Layer Matching for prefix: '{lora_prefix}'")
-        print(f"Searching for tensor keys in LoRA file that start with '{lora_prefix}'.")
-        print("-" * 60)
-
-        # 1. Print all keys from the LoRA file to see what's available.
-        print("Keys found in LoRA file:")
-        lora_keys_found = [k for k in lora_tensors.keys() if k.startswith(lora_prefix)]
-        if not lora_keys_found:
-            print("  - WARNING: No keys found with the expected prefix!")
-            print("  - All available keys in file are:")
-            for k in lora_tensors.keys():
-                print(f"    - {k}")
-        else:
-            for k in lora_keys_found:
-                print(f"  - {k}")
-
-        # 2. Print all targetable Linear layer names from the model.
-        print("\nTargetable nn.Linear layers in model:")
-        for name, module in model.named_modules():
-            if isinstance(module, torch.nn.Linear):
-                print(f"  - {name}")
-        print("-" * 60)
-        # --- END: ADD THIS NEW DIAGNOSTIC BLOCK ---
 
         modified_keys_count = 0
         

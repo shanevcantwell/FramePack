@@ -1,5 +1,5 @@
 # core/generation_utils.py
-# NEW FILE: Contains helper functions refactored from generation_core.py
+# Contains helper functions refactored from generation_core.py
 
 import os
 from ui import shared_state
@@ -81,7 +81,7 @@ def _save_final_preview(history_latents, vae, job_id, task_id, outputs_folder, c
     if not high_vram:
         load_model_as_complete(vae, target_device=gpu)
 
-    # This is a blocking, expensive operation.
+    # This is a blocking, expensive operation, necessary only to produce mp4.
     pixels = vae_decode(history_latents, vae).cpu()
 
     if not high_vram:

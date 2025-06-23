@@ -59,20 +59,15 @@ def _wire_image_and_metadata_events(components: dict):
     """Wires up the main image input and metadata modal events."""
     creative_ui_components = [components[key] for key in shared_state.CREATIVE_UI_KEYS]
     
-    # --- CORRECTED LIST ---
-    # This list now correctly has 6 components to match the 6 return
-    # values from the event_handlers.clear_image_action function.
     clear_button_outputs = [
         components[K.IMAGE_FILE_INPUT_UI],
         components[K.INPUT_IMAGE_DISPLAY_UI],
         components[K.CLEAR_IMAGE_BUTTON_UI],
         components[K.DOWNLOAD_IMAGE_BUTTON_UI],
         components[K.ADD_TASK_BUTTON],
-        # The duplicate entry has been removed.
         components[K.EXTRACTED_METADATA_STATE]
     ]
 
-    # This list correctly has 8 items.
     upload_outputs = [
         components[K.IMAGE_FILE_INPUT_UI],
         components[K.INPUT_IMAGE_DISPLAY_UI],
@@ -94,7 +89,6 @@ def _wire_image_and_metadata_events(components: dict):
         outputs=[components[K.ADD_TASK_BUTTON], components[K.PROCESS_QUEUE_BUTTON]]
     ))
 
-    # This 'click' event will now work correctly.
     (components[K.CLEAR_IMAGE_BUTTON_UI].click(
         fn=event_handlers.clear_image_action, inputs=None, outputs=clear_button_outputs
     ).then(
@@ -223,7 +217,6 @@ def _wire_app_startup_events(components: dict):
         inputs=[components[K.INPUT_IMAGE_DISPLAY_UI]],
         outputs=[components[K.IMAGE_FILE_INPUT_UI]]
     ).then(
-        # This is the fix for the segment calculation on startup.
         fn=event_handlers.ui_update_total_segments,
         inputs=[
             components[K.TOTAL_SECOND_LENGTH_UI],

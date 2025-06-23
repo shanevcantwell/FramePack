@@ -33,12 +33,10 @@ gr.processing_utils.video_is_playable = lambda video_filepath: True
 ui_components = layout_manager.create_ui()
 block = ui_components['block']
 
-# --- Event Wiring is now delegated to the switchboard ---
-# This replaces the entire previous "Event Wiring" and "with block:" section.
+# --- Event Wiring is delegated to the switchboard ---
 switchboard.wire_all_events(ui_components)
 
 # --- Application Load/Startup Events ---
-# These are still initiated from the main file.
 atexit.register(queue_manager.autosave_queue_on_exit_action, shared_state.global_state_for_autosave)
 
 # --- Application Launch ---

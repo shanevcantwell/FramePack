@@ -9,7 +9,7 @@ import tempfile
 
 from . import shared_state
 from . import metadata as metadata_manager
-from . import legacy_support  # <-- ADD THIS IMPORT
+from . import legacy_support
 from PIL import Image
 
 # --- Constants ---
@@ -19,7 +19,6 @@ UNLOAD_SAVE_FILENAME = "goan_unload_save.json"
 REFRESH_IMAGE_FILENAME = "goan_refresh_image.png"
 
 # --- Core Save/Load Logic ---
-
 def get_default_values_map():
     """
     Returns a dictionary with the default values for all UI settings.
@@ -35,7 +34,6 @@ def get_default_values_map():
         'gs_schedule_shape_ui': 'Off',
         'gs_final_ui': 10.0,
         'roll_off_start_ui': 75,
-        # 'roll_off_start_ui': 75, # MODIFIED: Removed duplicate key
         'roll_off_factor_ui': 1.0,
         'steps_ui': 25,
         'cfg_ui': 1.0,
@@ -68,9 +66,7 @@ def load_settings_from_file(filepath, return_updates=True):
             with open(filepath, 'r', encoding='utf-8') as f:
                 loaded_settings = json.load(f)
 
-            # MODIFIED: Apply legacy parameter conversion after loading.
             legacy_support.convert_legacy_params(loaded_settings)
-
             gr.Info(f"Loaded workspace from {filepath}")
         except Exception as e:
             gr.Warning(f"Could not load workspace from {filepath}: {e}")
@@ -193,7 +189,6 @@ def load_workspace(uploaded_file):
 
     return load_settings_from_file(uploaded_file.name)
 
-# --- REWRITTEN FUNCTION ---
 def load_workspace_on_start():
     """
     Finds the settings and refresh image file paths for application startup.

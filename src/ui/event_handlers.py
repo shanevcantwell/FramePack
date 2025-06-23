@@ -7,7 +7,6 @@ from PIL import Image, PngImagePlugin
 from . import metadata as metadata_manager
 from . import shared_state
 from . import workspace as workspace_manager
-# --- MODIFIED: Corrected the import paths for the queue functions ---
 from .queue_helpers import get_queue_state
 from .queue import autosave_queue_on_exit_action
 

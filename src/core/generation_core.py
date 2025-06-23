@@ -32,7 +32,7 @@ def _save_final_preview(history_latents, vae, job_id, task_id, outputs_folder, c
         print(f"Task {task_id}: No latents generated, cannot save final preview.")
         return None
 
-    # CHANGED: Added check for a hard abort (level 2) before starting the expensive decode.
+    # Check for a hard abort (level 2) before starting the expensive decode.
     # This allows a double-click abort to interrupt the graceful save.
     if shared_state.abort_state['level'] >= 2:
         print(f"Task {task_id}: Hard abort detected before final VAE decode.")
@@ -50,7 +50,7 @@ def _save_final_preview(history_latents, vae, job_id, task_id, outputs_folder, c
     if not high_vram:
         unload_complete_models(vae)
 
-    # CHANGED: Added a second check for a hard abort after the decode, before writing the file.
+    # Second check for a hard abort after the decode, before writing the file.
     if shared_state.abort_state['level'] >= 2:
         print(f"Task {task_id}: Hard abort detected before final MP4 write.")
         raise InterruptedError("Hard abort during final save.")
@@ -152,7 +152,7 @@ def worker(
 
     # Initialize history_latents_for_abort here to ensure it's always defined
     # It will be overwritten within the loop if generation proceeds
-    history_latents_for_abort = None # Added: Initialize history_latents_for_abort to None
+    history_latents_for_abort = None 
 
     try:
         if not isinstance(input_image, np.ndarray):
@@ -310,7 +310,7 @@ def worker(
             latent_paddings = [3] + [2] * (total_latent_sections - 3) + [1, 0]
 
         for latent_padding_iteration, latent_padding in enumerate(latent_paddings):
-            # CHANGED: This check handles a graceful abort (level 1+). A single click
+            # This check handles a graceful abort (level 1+). A single click
             # will break this loop, and execution will jump to the post-loop logic.
             if shared_state.abort_state['level'] >= 1:
                 print(f"Task {task_id}: Graceful abort detected. Breaking generation loop to save final preview.")
@@ -365,11 +365,9 @@ def worker(
                 if shared_state.abort_state['level'] >= 2:
                     raise KeyboardInterrupt("Abort signal received during sampling.")
                 
-                # MODIFIED: Removed the conditional return to ensure the UI is updated on every step.
                 current_diffusion_step = d["i"] + 1
 
                 preview_latent = d["denoised"]
-                # ... (rest of the image processing) ...
                 preview_img_np = vae_decode_fake(preview_latent)
                 preview_img_np = (
                     (preview_img_np * 255.0)
@@ -557,14 +555,11 @@ def worker(
         if shared_state.abort_state['level'] == 1:
             graceful_abort_preview_path = generation_utils._save_final_preview(                history_latents_for_abort, vae, job_id, task_id, outputs_folder, mp4_crf, output_queue_ref, high_vram
             )
-            # A graceful abort is not a full success, but we provide the preview path.
             success = False
             final_output_filename = graceful_abort_preview_path
             generation_utils._signal_abort_to_ui(output_queue_ref, task_id, graceful_abort_preview_path)
-        # This else block runs only if the loop completed naturally without an abort signal.
         else:
             success = True
-            # The final filename was already set by the last iteration of the loop.
 
     except (InterruptedError, KeyboardInterrupt) as e:
         print(f"Worker task {task_id} caught explicit abort signal: {e}")
@@ -577,7 +572,6 @@ def worker(
         output_queue_ref.push(('error', (task_id, str(e))))
         success = False
     finally:
-        # This block now correctly reports the outcome
         transformer.high_quality_fp32_output_for_inference = original_fp32_setting
         if not high_vram:
             unload_complete_models(text_encoder, text_encoder_2, image_encoder, vae, transformer)

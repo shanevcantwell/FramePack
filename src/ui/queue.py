@@ -13,13 +13,11 @@ import traceback
 import time
 import shutil
 
-# --- MODIFIED: Import our new lora_manager ---
 from . import lora as lora_manager
 from . import shared_state
 from .enums import ComponentKey as K
 from core.generation_core import worker
 from diffusers_helper.thread_utils import AsyncStream, async_run
-# --- MODIFIED: No longer using queue_helpers for LoRA application ---
 from . import queue_helpers
 
 AUTOSAVE_FILENAME = "goan_autosave_queue.zip"
@@ -39,7 +37,6 @@ def worker_wrapper(output_queue_ref, **kwargs):
 
 
 def add_or_update_task_in_queue(state_dict_gr_state, *args_from_ui_controls_tuple):
-    # This function remains unchanged.
     queue_state = queue_helpers.get_queue_state(state_dict_gr_state)
     editing_task_id = queue_state.get("editing_task_id", None)
     input_image_pil = args_from_ui_controls_tuple[0]
@@ -73,7 +70,6 @@ def add_or_update_task_in_queue(state_dict_gr_state, *args_from_ui_controls_tupl
 
 
 def cancel_edit_mode_action(state_dict_gr_state):
-    # This function remains unchanged.
     queue_state = queue_helpers.get_queue_state(state_dict_gr_state)
     if queue_state.get("editing_task_id") is not None:
         gr.Info("Edit cancelled.")
@@ -82,7 +78,6 @@ def cancel_edit_mode_action(state_dict_gr_state):
 
 
 def handle_queue_action_on_select(evt: gr.SelectData, state_dict_gr_state, *ui_param_controls_tuple):
-    # This function remains unchanged.
     if evt.index is None or evt.value not in ["↑", "↓", "✖", "✎"]:
         return [state_dict_gr_state, queue_helpers.update_queue_df_display(queue_helpers.get_queue_state(state_dict_gr_state))] + [gr.update()] * (1 + len(shared_state.ALL_TASK_UI_KEYS) + 4)
     row_index, _ = evt.index
@@ -113,7 +108,6 @@ def handle_queue_action_on_select(evt: gr.SelectData, state_dict_gr_state, *ui_p
 
 
 def clear_task_queue_action(state_dict_gr_state):
-    # This function remains unchanged.
     queue_state = queue_helpers.get_queue_state(state_dict_gr_state)
     queue = queue_state["queue"]
     with shared_state.queue_lock:
@@ -133,7 +127,6 @@ def clear_task_queue_action(state_dict_gr_state):
 
 
 def save_queue_to_zip(state_dict_gr_state):
-    # This function remains unchanged.
     queue_state = queue_helpers.get_queue_state(state_dict_gr_state)
     queue = queue_state.get("queue", [])
     if not queue:
@@ -166,7 +159,6 @@ def save_queue_to_zip(state_dict_gr_state):
 
 
 def load_queue_from_zip(state_dict_gr_state, zip_file_or_path):
-    # This function remains unchanged.
     queue_state = queue_helpers.get_queue_state(state_dict_gr_state)
     filepath = None
     if isinstance(zip_file_or_path, str) and os.path.exists(zip_file_or_path):
@@ -216,7 +208,6 @@ def load_queue_from_zip(state_dict_gr_state, zip_file_or_path):
 
 
 def autosave_queue_on_exit_action(state_dict_gr_state_ref):
-    # This function remains unchanged.
     print("Attempting to autosave queue on exit...")
     queue_state = queue_helpers.get_queue_state(state_dict_gr_state_ref)
     if not queue_state.get("queue"):
@@ -276,10 +267,6 @@ def process_task_queue_main_loop(state_dict_gr_state, *lora_control_values):
             if current_task.get('params', {}).get('seed') == -1:
                 current_task['params']['seed'] = np.random.randint(0, 2**32 - 1)
             
-            # This line was unnecessary and causing an issue.
-            # No longer need to pre-apply LoRAs via queue_helpers here.
-            # queue_helpers.apply_loras_from_state(state_dict_gr_state, *lora_control_values) # REMOVED
-
             current_task["status"] = "processing"
 
             yield (state_dict_gr_state, queue_helpers.update_queue_df_display(queue_state), gr.update(),
@@ -367,7 +354,6 @@ def process_task_queue_main_loop(state_dict_gr_state, *lora_control_values):
 
 
 def abort_current_task_processing_action(state_dict_gr_state):
-    # This function remains unchanged.
     queue_state = queue_helpers.get_queue_state(state_dict_gr_state)
     if not queue_state.get("processing", False):
         gr.Info("Nothing is currently processing.")

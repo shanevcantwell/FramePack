@@ -1,4 +1,4 @@
-# core/model_loader.py (Corrected)
+# core/model_loader.py
 import torch
 from ui import shared_state
 from diffusers import AutoencoderKLHunyuanVideo
@@ -6,7 +6,6 @@ from transformers import (
     LlamaModel, CLIPTextModel, LlamaTokenizerFast, CLIPTokenizer,
     SiglipImageProcessor, SiglipVisionModel
 )
-# MODIFIED: Removed the direct import of the legacy model, as we will use one unified class.
 from diffusers_helper.models.hunyuan_video_packed import HunyuanVideoTransformer3DModelPacked
 from diffusers_helper.memory import cpu, gpu, get_cuda_free_memory_gb, DynamicSwapInstaller
 
@@ -17,7 +16,6 @@ def load_and_configure_models():
     """
     print("Initializing models...")
 
-    # MODIFIED: Simplified legacy detection. We no longer use a separate legacy class.
     # The main HunyuanVideoTransformer3DModelPacked has fallbacks for older GPUs.
     try:
         major_capability, _ = torch.cuda.get_device_capability()

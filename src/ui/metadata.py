@@ -13,34 +13,34 @@ from .enums import ComponentKey as K
 def extract_metadata_from_pil_image(pil_image: Image.Image) -> dict:
     """Extracts a 'parameters' dictionary from a PIL image's text chunk or info dictionary."""
     if pil_image is None:
-        print("DEBUG (metadata.py - extract_metadata): pil_image is None.")
+        # print("DEBUG (metadata.py - extract_metadata): pil_image is None.")
         return {}
     
     # Prioritize 'text' for explicit PNG text chunks
     pnginfo_data = getattr(pil_image, 'text', None) 
     if pnginfo_data is None and pil_image.info: # If 'text' is not directly available, check 'info'
         pnginfo_data = pil_image.info
-        print(f"DEBUG (metadata.py - extract_metadata): Using pil_image.info. Content: {pnginfo_data}")
+        # print(f"DEBUG (metadata.py - extract_metadata): Using pil_image.info. Content: {pnginfo_data}")
     else:
-        print(f"DEBUG (metadata.py - extract_metadata): Using pil_image.text. Content: {pnginfo_data}")
+        # print(f"DEBUG (metadata.py - extract_metadata): Using pil_image.text. Content: {pnginfo_data}")
 
 
     if not isinstance(pnginfo_data, dict):
-        print(f"DEBUG (metadata.py - extract_metadata): pnginfo_data is not a dictionary. Type: {type(pnginfo_data)}")
+        # print(f"DEBUG (metadata.py - extract_metadata): pnginfo_data is not a dictionary. Type: {type(pnginfo_data)}")
         return {}
 
     # The key 'parameters' should be directly in the dictionary
     params_json_str = pnginfo_data.get('parameters') 
     if not params_json_str:
-        print(f"DEBUG (metadata.py - extract_metadata): 'parameters' key not found in metadata.")
+        # print(f"DEBUG (metadata.py - extract_metadata): 'parameters' key not found in metadata.")
         return {}
     
     try:
         extracted_params = json.loads(params_json_str) #
         if not isinstance(extracted_params, dict):
-            print(f"DEBUG (metadata.py - extract_metadata): Decoded parameters is not a dict. Type: {type(extracted_params)}")
+            # print(f"DEBUG (metadata.py - extract_metadata): Decoded parameters is not a dict. Type: {type(extracted_params)}")
             return {}
-        print(f"DEBUG (metadata.py - extract_metadata): Successfully extracted parameters: {extracted_params}")
+        # print(f"DEBUG (metadata.py - extract_metadata): Successfully extracted parameters: {extracted_params}")
         return extracted_params
     except json.JSONDecodeError as e:
         print(f"Error decoding metadata JSON: {e}") #
@@ -68,16 +68,16 @@ def open_and_check_metadata(temp_filepath: str):
         else:
             pil_image = pil_image.convert('RGBA')
         extracted_metadata = extract_metadata_from_pil_image(pil_image)
-        print(f"DEBUG (metadata.py): Extracted metadata: {extracted_metadata}") # ADD THIS
+        # print(f"DEBUG (metadata.py): Extracted metadata: {extracted_metadata}") 
         prompt_preview = ""
         if extracted_metadata and any(key in extracted_metadata for key in shared_state.CREATIVE_PARAM_KEYS):
             prompt_preview = extracted_metadata.get('prompt', '')
-            print(f"DEBUG (metadata.py): Metadata detected, prompt preview: '{prompt_preview}'") # ADD THIS
-        else:
-            print(f"DEBUG (metadata.py): No relevant metadata found or extraction failed.") # ADD THIS
+            # print(f"DEBUG (metadata.py): Metadata detected, prompt preview: '{prompt_preview}'") 
+        # else:
+            # print(f"DEBUG (metadata.py): No relevant metadata found or extraction failed.") 
         return pil_image, prompt_preview, extracted_metadata
     except Exception as e:
-        print(f"DEBUG (metadata.py): Error processing uploaded file in open_and_check_metadata: {e}") # ADD THIS
+        # print(f"DEBUG (metadata.py): Error processing uploaded file in open_and_check_metadata: {e}") 
         gr.Warning(f"Could not open image. It may be corrupt or an unsupported format. Error: {e}")
         return None, "", {}
 
@@ -98,7 +98,6 @@ def ui_load_params_from_image_metadata(extracted_metadata: dict) -> list:
                 if ui_key in shared_state.CREATIVE_UI_KEYS:
                     original_value = value
                     try:
-                        # --- ADDED: Robust type conversion for UI components ---
                         # Sliders expecting integers
                         if ui_key in ['seed_ui', 'steps_ui', 'preview_frequency_ui']:
                             # Use float() first to gracefully handle numbers like 25.0
