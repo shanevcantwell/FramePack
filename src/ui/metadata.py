@@ -20,9 +20,9 @@ def extract_metadata_from_pil_image(pil_image: Image.Image) -> dict:
     pnginfo_data = getattr(pil_image, 'text', None) 
     if pnginfo_data is None and pil_image.info: # If 'text' is not directly available, check 'info'
         pnginfo_data = pil_image.info
-        # print(f"DEBUG (metadata.py - extract_metadata): Using pil_image.info. Content: {pnginfo_data}")
-    else:
-        # print(f"DEBUG (metadata.py - extract_metadata): Using pil_image.text. Content: {pnginfo_data}")
+    #     print(f"DEBUG (metadata.py - extract_metadata): Using pil_image.info. Content: {pnginfo_data}")
+    # else:
+    #     print(f"DEBUG (metadata.py - extract_metadata): Using pil_image.text. Content: {pnginfo_data}")
 
 
     if not isinstance(pnginfo_data, dict):
