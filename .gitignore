@@ -190,3 +190,5 @@ demo_gradio_svc.py
 hf_download
 *.zip
 *Copy*.py
+run_goan.bat
+run_goan.sh
