@@ -102,7 +102,7 @@ def create_ui():
                     components[K.TOTAL_SEGMENTS_DISPLAY_UI] = gr.Markdown("Calculated Total Segments: N/A")
                     components[K.PREVIEW_FREQUENCY_UI] = gr.Slider(label="Preview Freq.", minimum=0, maximum=100, value=5, step=1)
                     components[K.SEGMENTS_TO_DECODE_CSV_UI] = gr.Textbox(label="Preview Segments CSV", value="")
-                    with gr.Row():
+                    components[K.FPS_UI] = gr.Slider(label="MP4 Framerate (FPS)", minimum=1, maximum=60, value=30, step=1, visible=False)                    with gr.Row():
                         components[K.GS_UI] = gr.Slider(label="Distilled CFG Start", minimum=1.0, maximum=32.0, value=10.0, step=0.01)
                         components[K.GS_SCHEDULE_SHAPE_UI] = gr.Radio(["Off", "Linear", "Roll-off"], label="Variable CFG", value="Off")
                         components[K.GS_FINAL_UI] = gr.Slider(label="Distilled CFG End", minimum=1.0, maximum=32.0, value=10.0, step=0.01, interactive=False)
@@ -112,7 +112,8 @@ def create_ui():
                     components[K.STEPS_UI] = gr.Slider(label="Steps", minimum=1, maximum=100, value=25, step=1)
                     components[K.RS_UI] = gr.Slider(label="RS", minimum=0.0, maximum=32.0, value=0.0, step=0.01, visible=False)
 
-                with gr.Accordion("LoRA Settings", open=False, visible=True):
+                with gr.Accordion("LoRA Settings", open=False, visible=True) as lora_accordion:
+                    components[K.LORA_ACCORDION] = lora_accordion
                     gr.Markdown("🧪 Experimental LoRA support. Upload a `.safetensors` file. Applied before generation.")
                     components[K.LORA_UPLOAD_BUTTON_UI] = gr.UploadButton("Upload LoRA", file_types=[".safetensors"], file_count="single", size="sm")
                     with gr.Row(visible=False, variant="panel") as lora_row_0_ctx:

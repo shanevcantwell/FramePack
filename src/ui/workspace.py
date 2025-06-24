@@ -30,6 +30,7 @@ def get_default_values_map():
         'seed_ui': -1,
         'preview_frequency_ui': 5,
         'segments_to_decode_csv_ui': '',
+        'fps_ui': 30,
         'gs_ui': 10.0,
         'gs_schedule_shape_ui': 'Off',
         'gs_final_ui': 10.0,
@@ -83,7 +84,7 @@ def load_settings_from_file(filepath, return_updates=True):
         key = key_enum.value
         value = final_settings.get(key, default_values.get(key))
         try:
-            if key in ['seed_ui', 'latent_window_size_ui', 'steps_ui', 'mp4_crf_ui', 'preview_frequency_ui', 'roll_off_start_ui']:
+            if key in ['seed_ui', 'latent_window_size_ui', 'steps_ui', 'mp4_crf_ui', 'preview_frequency_ui', 'roll_off_start_ui', 'fps_ui']:
                 value = int(value)
             elif key in ['total_second_length_ui', 'cfg_ui', 'gs_ui', 'rs_ui', 'gpu_memory_preservation_ui', 'gs_final_ui', 'roll_off_factor_ui']:
                 value = float(value)

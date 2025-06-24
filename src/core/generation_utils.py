@@ -60,7 +60,7 @@ def generate_roll_off_schedule(
     full_schedule = np.concatenate([sustain_phase, roll_off_phase])
     
     return full_schedule.tolist()
-def _save_final_preview(history_latents, vae, job_id, task_id, outputs_folder, crf, output_queue_ref, high_vram):
+def _save_final_preview(history_latents, vae, job_id, task_id, outputs_folder, crf, fps, output_queue_ref, high_vram):
     """
     Helper function to decode and save the final video preview during a graceful abort.
     This logic is refactored to be callable from the end of the worker.
@@ -96,7 +96,7 @@ def _save_final_preview(history_latents, vae, job_id, task_id, outputs_folder, c
     output_queue_ref.push(('progress', (task_id, None, "Writing final MP4 preview...", make_progress_bar_html(100, "Writing MP4..."))))
 
     final_video_path = os.path.join(outputs_folder, f'{job_id}_aborted_preview.mp4')
-    save_bcthw_as_mp4(pixels, final_video_path, fps=30, crf=crf)
+    save_bcthw_as_mp4(pixels, final_video_path, fps=fps, crf=crf)
     print(f"Task {task_id}: Saved graceful abort preview to {final_video_path}")
     return final_video_path
 

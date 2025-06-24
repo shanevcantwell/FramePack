@@ -19,11 +19,11 @@ def safe_shutdown_action(app_state, *ui_values):
     workspace_manager.save_ui_and_image_for_refresh(*ui_values)
     gr.Info("Queue and UI state saved. It is now safe to close the terminal.")
 
-def ui_update_total_segments(total_seconds_ui, latent_window_size_ui):
+def ui_update_total_segments(total_seconds_ui, latent_window_size_ui, fps_ui):
     """Calculates and displays the number of segments based on video length."""
     try:
-        total_segments = int(max(round((total_seconds_ui * 30) / (latent_window_size_ui * 4)), 1))
-        return f"Calculated Total Segments: {total_segments}"
+        total_segments = int(max(round((total_seconds_ui * fps_ui) / (latent_window_size_ui * 4)), 1))
+        return f"Calculated: {total_segments} Segments, {int(total_seconds_ui * fps_ui)} Total Frames"
     except (TypeError, ValueError):
         return "Segments: Invalid input"
 

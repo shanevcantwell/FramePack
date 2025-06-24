@@ -19,55 +19,7 @@ from ui import metadata as metadata_manager
 from ui import shared_state
 from core import generation_utils
 from .generation_utils import generate_roll_off_schedule
-
 import traceback
-
-def _save_final_preview(history_latents, vae, job_id, task_id, outputs_folder, crf, output_queue_ref, high_vram):
-    """
-    Helper function to decode and save the final video preview during a graceful abort.
-    This logic is refactored to be callable from the end of the worker.
-    CHANGED: Corrected parameter name from `history_pixels` to `history_latents` for accuracy.
-    """
-    if history_latents is None:
-        print(f"Task {task_id}: No latents generated, cannot save final preview.")
-        return None
-
-    # Check for a hard abort (level 2) before starting the expensive decode.
-    # This allows a double-click abort to interrupt the graceful save.
-    if shared_state.abort_state['level'] >= 2:
-        print(f"Task {task_id}: Hard abort detected before final VAE decode.")
-        raise InterruptedError("Hard abort during final save.")
-
-    print(f"Task {task_id}: Decoding final latents for graceful abort preview...")
-    output_queue_ref.push(('progress', (task_id, None, "Decoding final latents for preview...", make_progress_bar_html(100, "Decoding..."))))
-
-    if not high_vram:
-        load_model_as_complete(vae, target_device=gpu)
-
-    # This is a blocking, expensive operation.
-    pixels = vae_decode(history_latents, vae).cpu()
-
-    if not high_vram:
-        unload_complete_models(vae)
-
-    # Second check for a hard abort after the decode, before writing the file.
-    if shared_state.abort_state['level'] >= 2:
-        print(f"Task {task_id}: Hard abort detected before final MP4 write.")
-        raise InterruptedError("Hard abort during final save.")
-
-    print(f"Task {task_id}: Writing final MP4 preview...")
-    output_queue_ref.push(('progress', (task_id, None, "Writing final MP4 preview...", make_progress_bar_html(100, "Writing MP4..."))))
-
-    final_video_path = os.path.join(outputs_folder, f'{job_id}_aborted_preview.mp4')
-    save_bcthw_as_mp4(pixels, final_video_path, fps=30, crf=crf)
-    print(f"Task {task_id}: Saved graceful abort preview to {final_video_path}")
-    return final_video_path
-
-
-def _signal_abort_to_ui(output_queue_ref, task_id, video_path):
-    """Helper to send a consistently formatted abort message to the UI queue."""
-    print(f"Task {task_id}: Signaling abort to UI, providing video path: {video_path}")
-    output_queue_ref.push(('aborted', (task_id, video_path)))
 
 
 @torch.no_grad()
@@ -95,6 +47,7 @@ def worker(
     preview_frequency,
     segments_to_decode_csv,
     # --- Environment & Debug Parameters ---
+    fps,
     latent_window_size,
     gpu_memory_preservation,
     use_teacache,
@@ -115,7 +68,7 @@ def worker(
     os.makedirs(outputs_folder, exist_ok=True)
 
     # --- Gemini: do not touch - "secret sauce"
-    total_latent_sections = (total_second_length * 30) / (latent_window_size * 4)
+    total_latent_sections = (total_second_length * fps) / (latent_window_size * 4)
     total_latent_sections = int(max(round(total_latent_sections), 1))
 
     job_id = f"{generate_timestamp()}_task{task_id}"
@@ -182,6 +135,7 @@ def worker(
             "gs_schedule_shape": gs_schedule_shape,
             "roll_off_start": roll_off_start,
             "roll_off_factor": roll_off_factor,
+            "fps": fps,
         }
         metadata_obj.add_text("parameters", json.dumps(params_to_save_in_metadata))
         initial_image_with_params_path = os.path.join(
@@ -386,7 +340,7 @@ def worker(
                 current_video_frames_count = (
                     history_pixels.shape[2] if history_pixels is not None else 0
                 )
-                desc = f"Task {task_id}: Vid Frames: {current_video_frames_count}, Len: {current_video_frames_count / 30 :.2f}s. Seg {current_loop_segment_number}/{total_latent_sections}. Extending..."
+                desc = f"Task {task_id}: Vid Frames: {current_video_frames_count}, Len: {current_video_frames_count / fps :.2f}s. Seg {current_loop_segment_number}/{total_latent_sections}. Extending..."
                 output_queue_ref.push(
                     (
                         "progress",
@@ -417,143 +371,143 @@ def worker(
                     else:
                         roll_off_progress = (progress - roll_off_start_point) / (1.0 - roll_off_start_point)
                         curved_progress = roll_off_progress ** roll_off_factor
-                        current_segment_gs_to_use = initial_gs_from_ui (gs_final_value_for_schedule - initial_gs_from_ui) * curved_progress
+                        current_segment_gs_to_use = initial_gs_from_ui + (gs_final_value_for_schedule - initial_gs_from_ui) * curved_progress
 
+            generated_latents = sample_hunyuan(
+                transformer=transformer,
+                sampler="unipc",
+                width=width,
+                height=height,
+                frames=num_frames,
+                real_guidance_scale=cfg,
+                distilled_guidance_scale=current_segment_gs_to_use,
+                guidance_rescale=rs,
+                num_inference_steps=steps,
+                generator=rnd,
+                prompt_embeds=llama_vec.to(transformer.device),
+                prompt_embeds_mask=llama_attention_mask.to(transformer.device),
+                prompt_poolers=clip_l_pooler.to(transformer.device),
+                negative_prompt_embeds=llama_vec_n.to(transformer.device),
+                negative_prompt_embeds_mask=llama_attention_mask_n.to(
+                    transformer.device
+                ),
+                negative_prompt_poolers=clip_l_pooler_n.to(transformer.device),
+                device=transformer.device,
+                dtype=transformer.dtype,
+                image_embeddings=image_encoder_last_hidden_state.to(transformer.device),
+                latent_indices=latent_indices.to(transformer.device),
+                clean_latents=clean_latents.to(
+                    transformer.device, dtype=transformer.dtype
+                ),
+                clean_latent_indices=clean_latent_indices.to(transformer.device),
+                clean_latents_2x=clean_latents_2x.to(
+                    transformer.device, dtype=transformer.dtype
+                ),
+                clean_latent_2x_indices=clean_latent_2x_indices.to(transformer.device),
+                clean_latents_4x=clean_latents_4x.to(
+                    transformer.device, dtype=transformer.dtype
+                ),
+                clean_latent_4x_indices=clean_latent_4x_indices.to(transformer.device),
+                callback=callback_diffusion_step,
+            )
 
-                generated_latents = sample_hunyuan(
-                    transformer=transformer,
-                    sampler="unipc",
-                    width=width,
-                    height=height,
-                    frames=num_frames,
-                    real_guidance_scale=cfg,
-                    distilled_guidance_scale=current_segment_gs_to_use,
-                    guidance_rescale=rs,
-                    num_inference_steps=steps,
-                    generator=rnd,
-                    prompt_embeds=llama_vec.to(transformer.device),
-                    prompt_embeds_mask=llama_attention_mask.to(transformer.device),
-                    prompt_poolers=clip_l_pooler.to(transformer.device),
-                    negative_prompt_embeds=llama_vec_n.to(transformer.device),
-                    negative_prompt_embeds_mask=llama_attention_mask_n.to(
-                        transformer.device
-                    ),
-                    negative_prompt_poolers=clip_l_pooler_n.to(transformer.device),
-                    device=transformer.device,
-                    dtype=transformer.dtype,
-                    image_embeddings=image_encoder_last_hidden_state.to(transformer.device),
-                    latent_indices=latent_indices.to(transformer.device),
-                    clean_latents=clean_latents.to(
-                        transformer.device, dtype=transformer.dtype
-                    ),
-                    clean_latent_indices=clean_latent_indices.to(transformer.device),
-                    clean_latents_2x=clean_latents_2x.to(
-                        transformer.device, dtype=transformer.dtype
-                    ),
-                    clean_latent_2x_indices=clean_latent_2x_indices.to(transformer.device),
-                    clean_latents_4x=clean_latents_4x.to(
-                        transformer.device, dtype=transformer.dtype
-                    ),
-                    clean_latent_4x_indices=clean_latent_4x_indices.to(transformer.device),
-                    callback=callback_diffusion_step,
+            if is_last_section:
+                generated_latents = torch.cat(
+                    [start_latent.to(generated_latents), generated_latents], dim=2
                 )
 
-                if is_last_section:
-                    generated_latents = torch.cat(
-                        [start_latent.to(generated_latents), generated_latents], dim=2
-                    )
+            total_generated_latent_frames += int(generated_latents.shape[2])
+            history_latents = torch.cat(
+                [generated_latents.to(history_latents), history_latents], dim=2
+            )
 
-                total_generated_latent_frames += int(generated_latents.shape[2])
-                history_latents = torch.cat(
-                    [generated_latents.to(history_latents), history_latents], dim=2
+            if not high_vram:
+                offload_model_from_device_for_memory_preservation(
+                    transformer, target_device=gpu, preserved_memory_gb=8
+                )
+                load_model_as_complete(vae, target_device=gpu)
+
+            real_history_latents = history_latents[
+                :, :, :total_generated_latent_frames, :, :
+            ]
+
+            if history_pixels is None:
+                history_pixels = vae_decode(real_history_latents, vae).cpu()
+            else:
+                section_latent_frames = (
+                    (latent_window_size * 2 + 1)
+                    if is_last_section
+                    else (latent_window_size * 2)
+                )
+                overlapped_frames = latent_window_size * 4 - 3
+                current_pixels = vae_decode(
+                    real_history_latents[:, :, :section_latent_frames], vae
+                ).cpu()
+                history_pixels = soft_append_bcthw(
+                    current_pixels, history_pixels, overlapped_frames
                 )
 
-                if not high_vram:
-                    offload_model_from_device_for_memory_preservation(
-                        transformer, target_device=gpu, preserved_memory_gb=8
-                    )
-                    load_model_as_complete(vae, target_device=gpu)
+            if not high_vram:
+                unload_complete_models()
 
-                real_history_latents = history_latents[
-                    :, :, :total_generated_latent_frames, :, :
-                ]
+            current_video_frame_count = history_pixels.shape[2]
 
-                if history_pixels is None:
-                    history_pixels = vae_decode(real_history_latents, vae).cpu()
-                else:
-                    section_latent_frames = (
-                        (latent_window_size * 2 + 1)
-                        if is_last_section
-                        else (latent_window_size * 2)
-                    )
-                    overlapped_frames = latent_window_size * 4 - 3
-                    current_pixels = vae_decode(
-                        real_history_latents[:, :, :section_latent_frames], vae
-                    ).cpu()
-                    history_pixels = soft_append_bcthw(
-                        current_pixels, history_pixels, overlapped_frames
-                    )
+            # --- Gemini start again
+            # --- Unified and Corrected MP4 Saving Logic ---
+            should_save_mp4_this_iteration = False
 
-                if not high_vram:
-                    unload_complete_models()
+            # Condition 1: Always save the very first segment (iteration 0)
+            if latent_padding_iteration == 0:
+                should_save_mp4_this_iteration = True
+            # Condition 2: Always save the last segment
+            elif is_last_section:
+                should_save_mp4_this_iteration = True
+            # Condition 3: Save if the user specified this segment number (1-indexed)
+            elif (
+                parsed_segments_to_decode_set
+                and current_loop_segment_number in parsed_segments_to_decode_set
+            ):
+                should_save_mp4_this_iteration = True
+            # Condition 4: Save based on the periodic preview_frequency setting
+            elif (
+                preview_frequency > 0
+                and (current_loop_segment_number % preview_frequency == 0)
+            ):
+                should_save_mp4_this_iteration = True
 
-                current_video_frame_count = history_pixels.shape[2]
-
-                # --- Gemini start again
-                # --- Unified and Corrected MP4 Saving Logic ---
-                should_save_mp4_this_iteration = False
-
-                # Condition 1: Always save the very first segment (iteration 0)
-                if latent_padding_iteration == 0:
-                    should_save_mp4_this_iteration = True
-                # Condition 2: Always save the last segment
-                elif is_last_section:
-                    should_save_mp4_this_iteration = True
-                # Condition 3: Save if the user specified this segment number (1-indexed)
-                elif (
-                    parsed_segments_to_decode_set
-                    and current_loop_segment_number in parsed_segments_to_decode_set
-                ):
-                    should_save_mp4_this_iteration = True
-                # Condition 4: Save based on the periodic preview_frequency setting
-                elif (
-                    preview_frequency > 0
-                    and (current_loop_segment_number % preview_frequency == 0)
-                ):
-                    should_save_mp4_this_iteration = True
-
-                if should_save_mp4_this_iteration:
-                    segment_mp4_filename = os.path.join(
-                        outputs_folder,
-                        f"{job_id}_segment_{current_loop_segment_number}_frames_{current_video_frame_count}.mp4",
-                    )
-                    save_bcthw_as_mp4(
-                        history_pixels, segment_mp4_filename, fps=30, crf=mp4_crf
-                    )
-                    final_output_filename = segment_mp4_filename
-                    print(
-                        f"Task {task_id}: SAVED MP4 for segment {current_loop_segment_number} to {segment_mp4_filename}. Total video frames: {current_video_frame_count}"
-                    )
-                    output_queue_ref.push(
+            if should_save_mp4_this_iteration:
+                segment_mp4_filename = os.path.join(
+                    outputs_folder,
+                    f"{job_id}_segment_{current_loop_segment_number}_frames_{current_video_frame_count}.mp4",
+                )
+                save_bcthw_as_mp4(
+                    history_pixels, segment_mp4_filename, fps=fps, crf=mp4_crf
+                )
+                final_output_filename = segment_mp4_filename
+                print(
+                    f"Task {task_id}: SAVED MP4 for segment {current_loop_segment_number} to {segment_mp4_filename}. Total video frames: {current_video_frame_count}"
+                )
+                output_queue_ref.push(
+                    (
+                        "file",
                         (
-                            "file",
-                            (
-                                task_id,
-                                segment_mp4_filename,
-                                f"Segment {current_loop_segment_number} MP4 saved ({current_video_frame_count} frames)",
-                            ),
-                        )
+                            task_id,
+                            segment_mp4_filename,
+                            f"Segment {current_loop_segment_number} MP4 saved ({current_video_frame_count} frames)",
+                        ),
                     )
-                else:
-                    print(
-                        f"Task {task_id}: SKIPPED MP4 save for intermediate segment {current_loop_segment_number}."
-                    )
-                history_latents_for_abort = real_history_latents.clone()
+                )
+            else:
+                print(
+                    f"Task {task_id}: SKIPPED MP4 save for intermediate segment {current_loop_segment_number}."
+                )
+            history_latents_for_abort = real_history_latents.clone()
 
         # --- Post-loop logic ---
         # If the loop was broken by a graceful abort (level 1), save the preview.
         if shared_state.abort_state['level'] == 1:
-            graceful_abort_preview_path = generation_utils._save_final_preview(                history_latents_for_abort, vae, job_id, task_id, outputs_folder, mp4_crf, output_queue_ref, high_vram
+            graceful_abort_preview_path = generation_utils._save_final_preview(
+                history_latents_for_abort, vae, job_id, task_id, outputs_folder, mp4_crf, fps, output_queue_ref, high_vram
             )
             success = False
             final_output_filename = graceful_abort_preview_path

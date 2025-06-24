@@ -53,6 +53,7 @@ class ComponentKey(StrEnum):
     TOTAL_SEGMENTS_DISPLAY_UI = auto()
     PREVIEW_FREQUENCY_UI = auto()
     SEGMENTS_TO_DECODE_CSV_UI = auto()
+    FPS_UI = auto()
     GS_UI = auto()
     GS_SCHEDULE_SHAPE_UI = auto()
     GS_FINAL_UI = auto()
@@ -63,6 +64,7 @@ class ComponentKey(StrEnum):
     RS_UI = auto()
 
     # --- LoRA Settings ---
+    LORA_ACCORDION = auto()
     LORA_UPLOAD_BUTTON_UI = auto()
     LORA_ROW_0 = auto()
     LORA_NAME_0 = auto()
