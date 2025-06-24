@@ -19,12 +19,28 @@ bucket_options = {
 
 
 def find_nearest_bucket(h, w, resolution=640):
+    # The 'resolution' parameter is a key to select a group of pre-defined aspect ratio
+    # buckets that the model was trained on. It's not the target output resolution.
+    buckets = bucket_options.get(resolution)
+
+    # Safeguard against incorrect resolution keys or empty bucket lists.
+    if not buckets:
+        raise ValueError(f"No buckets are defined for the specified resolution key: {resolution}")
+
     min_metric = float('inf')
     best_bucket = None
-    for (bucket_h, bucket_w) in bucket_options[resolution]:
+
+    # The metric calculates which bucket's aspect ratio is closest to the input's.
+    for (bucket_h, bucket_w) in buckets:
         metric = abs(h * bucket_w - w * bucket_h)
-        if metric <= min_metric:
+        # Using '<' instead of '<=' makes the choice deterministic if multiple buckets
+        # have the same metric. It will select the first one it encounters.
+        if metric < min_metric:
             min_metric = metric
             best_bucket = (bucket_h, bucket_w)
-    return best_bucket
 
+    if best_bucket is None:
+        # This should be unreachable if the bucket list is not empty, but it's a good safeguard.
+        raise RuntimeError(f"Could not find a suitable bucket for resolution {resolution}. This is unexpected.")
+
+    return best_bucket

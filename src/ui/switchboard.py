@@ -180,8 +180,17 @@ def _wire_misc_control_events(components: dict):
         inputs=[components[K.GS_SCHEDULE_SHAPE_UI]],
         outputs=[components[k] for k in [K.GS_FINAL_UI, K.ROLL_OFF_START_UI, K.ROLL_OFF_FACTOR_UI]]
     )
-    for ctrl_key in [K.TOTAL_SECOND_LENGTH_UI, K.LATENT_WINDOW_SIZE_UI]:
-        components[ctrl_key].change(fn=event_handlers.ui_update_total_segments, inputs=[components[K.TOTAL_SECOND_LENGTH_UI], components[K.LATENT_WINDOW_SIZE_UI]], outputs=[components[K.TOTAL_SEGMENTS_DISPLAY_UI]])
+    # The controls that trigger a recalculation of total segments and frames.
+    segment_recalc_triggers = [
+        components[K.TOTAL_SECOND_LENGTH_UI],
+        components[K.LATENT_WINDOW_SIZE_UI],
+        components[K.FPS_UI]
+    ]
+    for ctrl in segment_recalc_triggers:
+        ctrl.change(
+            fn=event_handlers.ui_update_total_segments,
+            inputs=segment_recalc_triggers,
+            outputs=[components[K.TOTAL_SEGMENTS_DISPLAY_UI]])
 
 def _wire_app_startup_events(components: dict):
     """Wires events that run on application load."""
@@ -220,7 +229,8 @@ def _wire_app_startup_events(components: dict):
         fn=event_handlers.ui_update_total_segments,
         inputs=[
             components[K.TOTAL_SECOND_LENGTH_UI],
-            components[K.LATENT_WINDOW_SIZE_UI]
+            components[K.LATENT_WINDOW_SIZE_UI],
+            components[K.FPS_UI]
         ],
         outputs=[components[K.TOTAL_SEGMENTS_DISPLAY_UI]]
     ))
