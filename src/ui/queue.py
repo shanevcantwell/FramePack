@@ -1,4 +1,4 @@
-﻿# ui/queue.py
+﻿﻿# ui/queue.py
 # Handles all user-facing queue management logic and event handling for the UI.
 
 import gradio as gr
@@ -45,9 +45,11 @@ def add_or_update_task_in_queue(state_dict_gr_state, *args_from_ui_controls_tupl
         return state_dict_gr_state, queue_helpers.update_queue_df_display(queue_state), gr.update(value="Add Task to Queue" if editing_task_id is None else "Update Task"), gr.update(visible=editing_task_id is not None)
     all_ui_values_tuple = args_from_ui_controls_tuple[1:]
     temp_params_from_ui = dict(zip(shared_state.ALL_TASK_UI_KEYS, all_ui_values_tuple))
+    # This dictionary comprehension now correctly stores the string value from the UI
+    # for all parameters, including the 'gs_schedule_shape_ui' radio button.
+    # This fixes a bug where editing a task with "Roll-off" would not restore the UI state correctly.
     base_params_for_worker_dict = {
-        worker_key: (temp_params_from_ui.get(ui_key) != 'Off' if ui_key == K.GS_SCHEDULE_SHAPE_UI.value else temp_params_from_ui.get(ui_key))
-        for ui_key, worker_key in shared_state.UI_TO_WORKER_PARAM_MAP.items()
+        worker_key: temp_params_from_ui.get(ui_key) for ui_key, worker_key in shared_state.UI_TO_WORKER_PARAM_MAP.items()
     }
     img_np_data = np.array(input_image_pil)
     if editing_task_id is not None:

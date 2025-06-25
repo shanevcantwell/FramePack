@@ -7,6 +7,7 @@ from PIL.PngImagePlugin import PngInfo
 # Import shared state for access to parameter key lists
 from . import shared_state
 from .enums import ComponentKey as K
+from . import legacy_support
 
 # --- Core Metadata Functions ---
 
@@ -91,6 +92,9 @@ def ui_load_params_from_image_metadata(extracted_metadata: dict) -> list:
     updates_dict = {}
     
     if extracted_metadata:
+        # Centralize legacy conversion by calling the dedicated helper.
+        legacy_support.convert_legacy_worker_params(extracted_metadata)
+
         gr.Info("Applying creative settings from image...")
         for param_key, value in extracted_metadata.items():
             if param_key in param_to_ui_map:
@@ -105,11 +109,8 @@ def ui_load_params_from_image_metadata(extracted_metadata: dict) -> list:
                         # Sliders expecting floats
                         elif ui_key in ['total_second_length_ui', 'cfg_ui', 'gs_ui', 'rs_ui', 'gs_final_ui']:
                             value = float(value)
-                        # Radio button expecting a string from a list of choices
-                        elif ui_key == 'gs_schedule_shape_ui':
-                            # In JSON metadata, this is saved as a boolean (true/false)
-                            value = "Linear" if value else "Off"
-                        
+                        # The radio button now expects a string, which it gets directly
+                        # after the legacy conversion. No special handling needed here.
                         # Update the dictionary with the correctly typed value
                         updates_dict[ui_key] = gr.update(value=value)
 
@@ -133,8 +134,7 @@ def create_params_from_ui(ui_keys: list, ui_values: tuple) -> dict:
     for ui_key, value in ui_dict.items():
         worker_key = shared_state.UI_TO_WORKER_PARAM_MAP.get(ui_key)
         if worker_key:
-            if ui_key == K.GS_SCHEDULE_SHAPE_UI.value:
-                params_dict[worker_key] = (value != 'Off')
-            else:
-                params_dict[worker_key] = value
+            # This was the bug: it was converting the string "Roll-off" or "Linear" to a boolean.
+            # Now it correctly stores the string value.
+            params_dict[worker_key] = value
     return params_dict

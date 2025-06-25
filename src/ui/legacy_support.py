@@ -25,3 +25,18 @@ def convert_legacy_params(params: dict):
     if isinstance(value_to_check, bool):
         params[new_key] = "Linear" if value_to_check else "Off"
         print(f"INFO: Converted legacy boolean schedule '{value_to_check}' to '{params[new_key]}'.")
+
+def convert_legacy_worker_params(params: dict):
+    """
+    Checks for and converts legacy parameter formats that use worker keys.
+    This is typically used for parameters loaded from image metadata.
+    This function modifies the params dictionary in-place.
+
+    Args:
+        params (dict): A dictionary of parameters with worker keys (e.g., 'gs_schedule_shape').
+    """
+    worker_key = 'gs_schedule_shape'
+    if worker_key in params and isinstance(params[worker_key], bool):
+        legacy_bool_val = params[worker_key]
+        params[worker_key] = "Linear" if legacy_bool_val else "Off"
+        print(f"INFO: Converted legacy boolean worker param '{worker_key}' from '{legacy_bool_val}' to '{params[worker_key]}'.")
