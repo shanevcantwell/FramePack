@@ -246,3 +246,59 @@ def load_image_from_path(image_path):
             return gr.update(value=None, visible=False)
 
     return gr.update(value=None, visible=False)
+
+def load_and_apply_startup_workspace():
+    """
+    A single, consolidated function to handle all startup workspace and image loading.
+    This replaces the multi-step .then() chain to improve robustness.
+    """
+    print("Consolidated startup: Loading workspace and image...")
+    
+    # --- Part 1: Find file paths (from load_workspace_on_start) ---
+    settings_file_path = None
+    image_path_to_load = None
+
+    if os.path.exists(UNLOAD_SAVE_FILENAME):
+        settings_file_path = UNLOAD_SAVE_FILENAME
+        try:
+            with open(settings_file_path, 'r', encoding='utf-8') as f:
+                settings = json.load(f)
+            if "refresh_image_path" in settings and os.path.exists(settings["refresh_image_path"]):
+                image_path_to_load = settings["refresh_image_path"]
+        except (IOError, json.JSONDecodeError) as e:
+            print(f"Could not read {UNLOAD_SAVE_FILENAME} to find refresh image: {e}")
+    elif os.path.exists(SETTINGS_FILENAME):
+        settings_file_path = SETTINGS_FILENAME
+
+    # --- Part 2: Load settings and generate UI updates (from load_settings_from_file) ---
+    # This returns a list of values, not gr.update objects yet.
+    loaded_values = load_settings_from_file(settings_file_path, return_updates=False)
+    
+    # Create a dictionary mapping UI component keys to their loaded values.
+    ui_keys_list = [key.value for key in shared_state.ALL_TASK_UI_KEYS]
+    updates_map = dict(zip(ui_keys_list, loaded_values))
+
+    # --- Part 3: Load image (from load_image_from_path) ---
+    pil_image = None
+    if image_path_to_load and os.path.exists(image_path_to_load):
+        try:
+            pil_image = Image.open(image_path_to_load)
+            # Clean up the temporary session-restore image
+            if REFRESH_IMAGE_FILENAME in os.path.basename(image_path_to_load) or tempfile.gettempdir() in os.path.abspath(image_path_to_load):
+                os.remove(image_path_to_load)
+        except Exception as e:
+            print(f"Error loading refresh image from '{image_path_to_load}': {e}")
+            gr.Warning(f"Could not restore image from previous session: {e}")
+
+    # --- Part 4: Prepare all UI updates to be returned ---
+    # Start with updates for the main workspace components
+    final_updates = [gr.update(value=updates_map.get(key.value)) for key in shared_state.ALL_TASK_UI_KEYS]
+    
+    # Add updates for the image display and its associated buttons
+    final_updates.append(gr.update(value=pil_image, visible=pil_image is not None)) # INPUT_IMAGE_DISPLAY_UI
+    final_updates.append(gr.update(visible=pil_image is not None)) # CLEAR_IMAGE_BUTTON_UI
+    final_updates.append(gr.update(visible=pil_image is not None)) # DOWNLOAD_IMAGE_BUTTON_UI
+    final_updates.append(gr.update(visible=pil_image is None))   # IMAGE_FILE_INPUT_UI
+
+    print("Consolidated startup: Finished loading. Returning UI updates.")
+    return final_updates

@@ -15,6 +15,7 @@ from diffusers_helper.memory import unload_complete_models, load_model_as_comple
 from diffusers_helper.clip_vision import hf_clip_vision_encode
 from diffusers_helper.bucket_tools import find_nearest_bucket
 from diffusers_helper.gradio.progress_bar import make_progress_bar_html
+from core import model_loader # Import model_loader
 from ui import metadata as metadata_manager
 from ui import shared_state
 from core import generation_utils
@@ -61,7 +62,6 @@ def worker(
     vae,
     feature_extractor,
     image_encoder,
-    transformer,
     high_vram,
 ):
     outputs_folder = os.path.expanduser(output_folder) if output_folder else "./outputs/"
@@ -100,7 +100,9 @@ def worker(
     )
 
     graceful_abort_preview_path = None
-    original_fp32_setting = transformer.high_quality_fp32_output_for_inference
+    # Ensure transformer is loaded before accessing its properties
+    transformer = model_loader.get_transformer_model()
+    original_fp32_setting = transformer.high_quality_fp32_output_for_inference # Store original setting
     transformer.high_quality_fp32_output_for_inference = use_fp32_transformer_output
 
     # Initialize history_latents_for_abort here to ensure it's always defined

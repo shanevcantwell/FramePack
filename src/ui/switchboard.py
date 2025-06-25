@@ -195,36 +195,21 @@ def _wire_misc_control_events(components: dict):
 def _wire_app_startup_events(components: dict):
     """Wires events that run on application load."""
     block = components[K.BLOCK]
-    full_workspace_ui_components = [components[key] for key in shared_state.ALL_TASK_UI_KEYS]
 
-    # These state components are created in layout.py but used here.
-    startup_settings_file_state = gr.State(None)
-    startup_image_path_state = gr.State(None)
+    # Define the full list of outputs that our new consolidated function will update.
+    # The order must match the order of `final_updates` in the new function.
+    startup_outputs = (
+        [components[key] for key in shared_state.ALL_TASK_UI_KEYS] +
+        [components[K.INPUT_IMAGE_DISPLAY_UI], components[K.CLEAR_IMAGE_BUTTON_UI],
+         components[K.DOWNLOAD_IMAGE_BUTTON_UI], components[K.IMAGE_FILE_INPUT_UI]]
+    )
 
+    # A single, robust load event.
     (block.load(
-        fn=workspace_manager.load_workspace_on_start,
+        fn=workspace_manager.load_and_apply_startup_workspace,
         inputs=None,
-        outputs=[startup_settings_file_state, startup_image_path_state]
-    ).then(
-        fn=workspace_manager.load_settings_from_file,
-        inputs=[startup_settings_file_state],
-        outputs=full_workspace_ui_components
-    ).then(
-        fn=workspace_manager.load_image_from_path,
-        inputs=[startup_image_path_state],
-        outputs=[components[K.INPUT_IMAGE_DISPLAY_UI]]
-    ).then(
-        fn=lambda img: gr.update(visible=img is not None),
-        inputs=[components[K.INPUT_IMAGE_DISPLAY_UI]],
-        outputs=[components[K.CLEAR_IMAGE_BUTTON_UI]]
-    ).then(
-        fn=lambda img: gr.update(visible=img is not None),
-        inputs=[components[K.INPUT_IMAGE_DISPLAY_UI]],
-        outputs=[components[K.DOWNLOAD_IMAGE_BUTTON_UI]]
-    ).then(
-        fn=lambda img: gr.update(visible=img is None),
-        inputs=[components[K.INPUT_IMAGE_DISPLAY_UI]],
-        outputs=[components[K.IMAGE_FILE_INPUT_UI]]
+        outputs=startup_outputs
+    # Chain subsequent UI logic that depends on the loaded state.
     ).then(
         fn=event_handlers.ui_update_total_segments,
         inputs=[
