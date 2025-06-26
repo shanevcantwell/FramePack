@@ -83,8 +83,8 @@ def update_queue_df_display(queue_state):
         else: status_display = "⏸️ Pending"
             
         data.append([
-            task_id, status_display, prompt_cell,
-            f"{params.get('total_second_length', 0):.1f}s", img_md, "↑", "↓", "✖", "✎"
+            task_id, status_display, "✖", "✎", # These match the new header order
+            prompt_cell, f"{params.get('total_second_length', 0):.1f}s", img_md, "↑", "↓" # Remaining columns
         ])
         
     return gr.update(value=data)

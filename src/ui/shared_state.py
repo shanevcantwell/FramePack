@@ -10,9 +10,12 @@ queue_lock = threading.Lock()
 # This is kept for compatibility and as a simple, overarching abort flag.
 interrupt_flag = threading.Event()
 
-# CHANGED: Added state dictionary for the multi-level abort feature.
-# 'level' 0: No abort. 1: Graceful abort (1-click). 2: Hard abort (2-click).
-# 'last_click_time' tracks clicks to differentiate single vs. double clicks.
+# Event to signal that a preview should be generated for the current segment.
+preview_request_flag = threading.Event()
+
+# State dictionary for the multi-level abort feature.
+# 'level' 0: No abort.
+# 'level' 2: Hard abort (triggered by the Stop Processing button).
 abort_state = {'level': 0, 'last_click_time': 0}
 
 

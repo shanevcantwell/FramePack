@@ -266,11 +266,6 @@ def worker(
             latent_paddings = [3] + [2] * (total_latent_sections - 3) + [1, 0]
 
         for latent_padding_iteration, latent_padding in enumerate(latent_paddings):
-            # This check handles a graceful abort (level 1+). A single click
-            # will break this loop, and execution will jump to the post-loop logic.
-            if shared_state.abort_state['level'] >= 1:
-                print(f"Task {task_id}: Graceful abort detected. Breaking generation loop to save final preview.")
-                break
             is_last_section = latent_padding == 0
             latent_padding_size = latent_padding * latent_window_size
             # Added for consistent 1-indexed segment number for loop segments
@@ -458,6 +453,12 @@ def worker(
             # --- Unified and Corrected MP4 Saving Logic ---
             should_save_mp4_this_iteration = False
 
+            # Condition 0: A preview was explicitly requested for this segment.
+            if shared_state.preview_request_flag.is_set():
+                should_save_mp4_this_iteration = True
+                # Clear the flag now that the request is being handled.
+                shared_state.preview_request_flag.clear()
+
             # Condition 1: Always save the very first segment (iteration 0)
             if latent_padding_iteration == 0:
                 should_save_mp4_this_iteration = True
@@ -506,16 +507,7 @@ def worker(
             history_latents_for_abort = real_history_latents.clone()
 
         # --- Post-loop logic ---
-        # If the loop was broken by a graceful abort (level 1), save the preview.
-        if shared_state.abort_state['level'] == 1:
-            graceful_abort_preview_path = generation_utils._save_final_preview(
-                history_latents_for_abort, vae, job_id, task_id, outputs_folder, mp4_crf, fps, output_queue_ref, high_vram
-            )
-            success = False
-            final_output_filename = graceful_abort_preview_path
-            generation_utils._signal_abort_to_ui(output_queue_ref, task_id, graceful_abort_preview_path)
-        else:
-            success = True
+        success = True
 
     except (InterruptedError, KeyboardInterrupt) as e:
         print(f"Worker task {task_id} caught explicit abort signal: {e}")

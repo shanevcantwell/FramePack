@@ -110,9 +110,9 @@ def handle_queue_action_on_select(evt: gr.SelectData, state_dict_gr_state, *ui_p
         queue_state["editing_task_id"] = task_to_edit['id']
         gr.Info(f"Editing Task {task_to_edit['id']}.")
         img_np_from_task = params_to_load_to_ui.get('input_image')
-        img_update = gr.update(value=Image.fromarray(img_np_from_task), visible=True) if isinstance(img_np_from_task, np.ndarray) else gr.update(value=None, visible=False)
-        # This list comprehension was missing a .value attribute, causing a TypeError.
-        ui_updates = [gr.update(value=params_to_load_to_ui.get(shared_state.UI_TO_WORKER_PARAM_MAP.get(key.value), None)) for key in shared_state.ALL_TASK_UI_KEYS]
+        img_update = gr.update(value=Image.fromarray(img_np_from_task), visible=True) if isinstance(img_np_from_task, np.ndarray) else gr.update(value=None, visible=False) # type: ignore
+        # Corrected: UI_TO_WORKER_PARAM_MAP keys are K enums, not their string values.
+        ui_updates = [gr.update(value=params_to_load_to_ui.get(shared_state.UI_TO_WORKER_PARAM_MAP.get(key), None)) for key in shared_state.ALL_TASK_UI_KEYS]
         return [state_dict_gr_state, queue_helpers.update_queue_df_display(queue_state), img_update] + ui_updates + [gr.update(), gr.update(), gr.update(value="Update Task", variant="primary"), gr.update(visible=True)]
     return [state_dict_gr_state, queue_helpers.update_queue_df_display(queue_state)] + [gr.update()] * (len(shared_state.ALL_TASK_UI_KEYS) + 5)
 
@@ -143,10 +143,9 @@ def request_preview_generation_action(state_dict_gr_state):
         gr.Info("Nothing is currently processing.")
         return state_dict_gr_state
     
-    # Set the preview_requested flag. The button state will be updated by the .then() call.
-    queue_state['preview_requested'] = True
-    shared_state.abort_state['level'] = 1
-    gr.Info("Preview requested. Will generate after the current segment completes, then continue queue.")
+    # Set the dedicated preview request flag. The worker will check this after each segment.
+    shared_state.preview_request_flag.set()
+    gr.Info("Preview requested. A video of the current segment will be generated when it completes.")
     
     return state_dict_gr_state
 
@@ -258,6 +257,7 @@ def process_task_queue_main_loop(state_dict_gr_state, *lora_control_values): # n
     if queue_state.get("processing", False):
         gr.Info("Stop signal sent. Waiting for current step to finish...")
         shared_state.interrupt_flag.set()  # Signal a hard stop for the queue loop
+        shared_state.abort_state['level'] = 2  # Signal a hard stop for the worker
         logger.info("Stop signal sent to worker. Interrupt Level: 2.")
         yield (
             state_dict_gr_state,
@@ -339,8 +339,7 @@ def process_task_queue_main_loop(state_dict_gr_state, *lora_control_values): # n
             async_run(worker_wrapper, output_queue_ref=output_stream.output_queue, **worker_args)
 
             last_video_path_for_task = None
-            task_crashed = False
-            task_was_aborted_for_preview = False
+            task_crashed = False # Renamed from task_was_aborted_for_preview
 
             while True:
                 # Add an explicit interrupt check here to make the Stop button more responsive.
@@ -374,24 +373,6 @@ def process_task_queue_main_loop(state_dict_gr_state, *lora_control_values): # n
                     task_id, new_video_path, _ = data
                     last_video_path_for_task = new_video_path
                     yield (state_dict_gr_state, gr.update(), gr.update(value=new_video_path), gr.update(), gr.update(), gr.update(), gr.update(), gr.update(), gr.update())
-                elif flag == "aborted":
-                    task_was_aborted_for_preview = True
-                    # A preview was generated. Reset the flag so the button becomes active again.
-                    task_id, abort_video_path = data
-                    queue_state['preview_requested'] = False
-                    # The button becomes green and active again by setting the primary variant.
-                    create_preview_button_update = gr.update(interactive=True, variant="primary", value="📸 Create Preview")
-                    yield (
-                        state_dict_gr_state,
-                        queue_helpers.update_queue_df_display(queue_state),
-                        gr.update(value=abort_video_path), # Show the preview video
-                        gr.update(), # preview image
-                        gr.update(), # progress desc
-                        gr.update(), # progress bar
-                        gr.update(), # process queue button
-                        create_preview_button_update,
-                        gr.update()  # clear queue button
-                    )
                 elif flag == "crash":
                     task_crashed = True
                     gr.Warning(f"Task {current_task['id']} failed! Check console for traceback.")
@@ -399,16 +380,14 @@ def process_task_queue_main_loop(state_dict_gr_state, *lora_control_values): # n
                     current_task["error_message"] = "Worker process crashed."
                     break
                 elif flag == "end":
-                    # If a preview was generated, the worker incorrectly sends an 'end' signal.
-                    # We prevent the task from being marked 'done' so it can be re-processed.
-                    if not task_crashed and not task_was_aborted_for_preview:
+                    if not task_crashed:
                         current_task["status"] = "done"
                         if last_video_path_for_task:
                             current_task["final_output_filename"] = last_video_path_for_task
                     break
 
             with shared_state.queue_lock:
-                if current_task["status"] in ["done", "error"] and queue_state["queue"] and queue_state["queue"][0]["id"] == current_task["id"]:
+                if current_task["status"] in ["done", "error", "aborted"] and queue_state["queue"] and queue_state["queue"][0]["id"] == current_task["id"]:
                     queue_state["queue"].pop(0)
 
             final_video_for_display = state_dict_gr_state.get("last_completed_video_path")

@@ -111,8 +111,8 @@ def create_ui():
             # These hidden file components are the targets for one-click downloads.
             components[K.IMAGE_DOWNLOADER_UI] = gr.File(visible=False, elem_id="image_downloader_hidden_file")
             components[K.QUEUE_DOWNLOADER_UI] = gr.File(visible=False, elem_id="queue_downloader_hidden_file")
-            gr.Markdown("## Task Queue")
-            components[K.QUEUE_DF_DISPLAY_UI] = gr.DataFrame(headers=["ID", "Status", "Prompt", "Length", "Steps", "Input", "↑", "↓", "✖", "✎"], datatype=["number","markdown","markdown","str","number","markdown","markdown","markdown","markdown","markdown"], col_count=(10,"fixed"), interactive=False, elem_id="queue_df")
+            gr.Markdown("## Task Queue") # Removed "Steps" header, reordered action buttons
+            components[K.QUEUE_DF_DISPLAY_UI] = gr.DataFrame(headers=["ID", "Status", "✖", "✎", "Prompt", "Length", "Input", "↑", "↓"], datatype=["number","markdown","markdown","markdown","markdown","str","markdown","markdown","markdown"], col_count=(9,"fixed"), interactive=False, elem_id="queue_df")
             with gr.Row():
                 # Changed from DownloadButton to Button to enable one-click download via JS.
                 components[K.SAVE_QUEUE_BUTTON_UI] = gr.Button("Save Queue", size="sm", interactive=False)
