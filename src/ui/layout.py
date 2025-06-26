@@ -67,14 +67,15 @@ def create_ui():
 
         with gr.Row():
             with gr.Column(scale=1, min_width=300):
-                components[K.IMAGE_FILE_INPUT_UI] = gr.File(label="Drop Image Here or Click to Upload", file_types=["image"])
+                components[K.IMAGE_FILE_INPUT_UI] = gr.File(label="Drop Image Here or Click to Upload")
                 components[K.INPUT_IMAGE_DISPLAY_UI] = gr.Image(type="pil", label="Current Input Image", interactive=False, visible=False, height=220, show_download_button=False)
                 components[K.ADD_TASK_BUTTON] = gr.Button("Add to Queue", variant="secondary")
                 with gr.Row():
                     components[K.CLEAR_IMAGE_BUTTON_UI] = gr.Button("Clear Image", variant="secondary", visible=False)
-                    components[K.DOWNLOAD_IMAGE_BUTTON_UI] = gr.DownloadButton("Download Image", variant="secondary", visible=False)
-                components[K.PROCESS_QUEUE_BUTTON] = gr.Button("▶️ Process Queue", variant="primary")
-                components[K.ABORT_TASK_BUTTON] = gr.Button("⏹️ Abort", variant="stop", interactive=True)
+                    components[K.DOWNLOAD_IMAGE_BUTTON_UI] = gr.Button("Download Image", variant="secondary", visible=False)
+                components[K.PROCESS_QUEUE_BUTTON] = gr.Button("Queue Empty", variant="secondary", interactive=False)
+                with gr.Row():
+                    components[K.CREATE_PREVIEW_BUTTON] = gr.Button("📸 Create Preview", variant="secondary", interactive=False, scale=1)
                 components[K.CANCEL_EDIT_TASK_BUTTON] = gr.Button("Cancel Edit", visible=False, variant="secondary")
 
             with gr.Column(scale=2, min_width=600):
@@ -86,12 +87,12 @@ def create_ui():
                     components[K.SEED_UI] = gr.Number(label="Seed", value=-1, precision=0, minimum=-1, maximum=2**32 - 1)
 
         with gr.Group():
-            components[K.IMAGE_DOWNLOADER_UI] = gr.File(visible=False)
+            components[K.IMAGE_DOWNLOADER_UI] = gr.File(visible=False, elem_id="image_downloader_hidden_file")
             gr.Markdown("## Task Queue")
             components[K.QUEUE_DF_DISPLAY_UI] = gr.DataFrame(headers=["ID", "Status", "Prompt", "Length", "Steps", "Input", "↑", "↓", "✖", "✎"], datatype=["number","markdown","markdown","str","number","markdown","markdown","markdown","markdown","markdown"], col_count=(10,"fixed"), interactive=False, elem_id="queue_df")
             with gr.Row():
-                components[K.SAVE_QUEUE_BUTTON_UI] = gr.DownloadButton("Save Queue", size="sm")
-                components[K.LOAD_QUEUE_BUTTON_UI] = gr.UploadButton("Load Queue", file_types=[".zip"], size="sm")
+                components[K.SAVE_QUEUE_BUTTON_UI] = gr.DownloadButton("Save Queue", size="sm", variant="secondary", interactive=False)
+                components[K.LOAD_QUEUE_BUTTON_UI] = gr.UploadButton("Load Queue", file_types=[".zip"], size="sm", variant="primary")
                 components[K.CLEAR_QUEUE_BUTTON_UI] = gr.Button("Clear Pending", size="sm", variant="stop")
 
         components[K.CURRENT_TASK_PREVIEW_IMAGE_UI] = gr.Image(label="Live Latent Preview", interactive=False, visible=False, show_download_button=False)
@@ -102,7 +103,7 @@ def create_ui():
                     components[K.TOTAL_SEGMENTS_DISPLAY_UI] = gr.Markdown("Calculated Total Segments: N/A")
                     components[K.PREVIEW_FREQUENCY_UI] = gr.Slider(label="Preview Freq.", minimum=0, maximum=100, value=5, step=1)
                     components[K.SEGMENTS_TO_DECODE_CSV_UI] = gr.Textbox(label="Preview Segments CSV", value="")
-                    components[K.FPS_UI] = gr.Slider(label="MP4 Framerate (FPS)", minimum=1, maximum=60, value=30, step=1, visible=False)
+                    components[K.FPS_UI] = gr.Slider(label="MP4 Framerate (FPS)", minimum=1, maximum=60, value=30, step=1)
                     with gr.Row():
                         components[K.GS_UI] = gr.Slider(label="Distilled CFG Start", minimum=1.0, maximum=32.0, value=10.0, step=0.01)
                         components[K.GS_SCHEDULE_SHAPE_UI] = gr.Radio(["Off", "Linear", "Roll-off"], label="Variable CFG", value="Off")

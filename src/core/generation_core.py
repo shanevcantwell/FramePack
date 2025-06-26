@@ -68,7 +68,10 @@ def worker(
     os.makedirs(outputs_folder, exist_ok=True)
 
     # --- Gemini: do not touch - "secret sauce"
-    total_latent_sections = (total_second_length * fps) / (latent_window_size * 4)
+    # The model generates content at a fixed internal framerate. The UI 'fps' setting
+    # should only control the final MP4 encoding, not the number of frames generated.
+    GENERATION_FPS = 8
+    total_latent_sections = (total_second_length * GENERATION_FPS) / (latent_window_size * 4)
     total_latent_sections = int(max(round(total_latent_sections), 1))
 
     job_id = f"{generate_timestamp()}_task{task_id}"
@@ -507,14 +510,27 @@ def worker(
 
         # --- Post-loop logic ---
         # If the loop was broken by a graceful abort (level 1), save the preview.
-        if shared_state.abort_state['level'] == 1:
+        if shared_state.abort_state['level'] >= 1:
             graceful_abort_preview_path = generation_utils._save_final_preview(
                 history_latents_for_abort, vae, job_id, task_id, outputs_folder, mp4_crf, fps, output_queue_ref, high_vram
             )
-            success = False
             final_output_filename = graceful_abort_preview_path
-            generation_utils._signal_abort_to_ui(output_queue_ref, task_id, graceful_abort_preview_path)
+
+            # Distinguish between a "Create Preview" (continue queue) and "Stop Processing" (halt queue).
+            # The UI loop's continuation is controlled by `interrupt_flag`, which is checked in `ui/queue.py`.
+            # Here, we determine the final status of the *current* task based on that same flag.
+            if shared_state.interrupt_flag.is_set():
+                # This was a "Stop Processing" request. Signal abort to UI so it's marked as "aborted".
+                print(f"Task {task_id}: Full stop requested. Signaling abort to UI.")
+                success = False
+                generation_utils._signal_abort_to_ui(output_queue_ref, task_id, graceful_abort_preview_path)
+            else:
+                # This was just a "Create Preview" request. The task is considered successful.
+                print(f"Task {task_id}: Preview created successfully. Signaling completion.")
+                success = True
+                output_queue_ref.push(('file', (task_id, graceful_abort_preview_path, "Preview created.")))
         else:
+            # This is the normal completion path (loop finished without interruption)
             success = True
 
     except (InterruptedError, KeyboardInterrupt) as e:
