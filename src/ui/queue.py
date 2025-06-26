@@ -15,7 +15,7 @@ import shutil
 import logging
 
 from . import lora as lora_manager
-from . import shared_state
+from . import shared_state as shared_state_module
 from .enums import ComponentKey as K
 from . import workspace as workspace_manager
 from core.generation_core import worker
@@ -56,11 +56,11 @@ def add_or_update_task_in_queue(state_dict_gr_state, *args_from_ui_controls_tupl
     temp_params_from_ui = dict(zip(enum_keys, all_ui_values_tuple))
     # This fixes a bug where editing a task with "Roll-off" would not restore the UI state correctly.
     base_params_for_worker_dict = {
-        worker_key: temp_params_from_ui.get(ui_key) for ui_key, worker_key in shared_state.UI_TO_WORKER_PARAM_MAP.items()
+        worker_key: temp_params_from_ui.get(ui_key) for ui_key, worker_key in shared_state_module.UI_TO_WORKER_PARAM_MAP.items()
     }
     img_np_data = np.array(input_image_pil)
     if editing_task_id is not None:
-        with shared_state.queue_lock:
+        with shared_state_module.shared_state_instance.queue_lock:
             for task in queue_state["queue"]:
                 if task["id"] == editing_task_id:
                     task["params"] = {**base_params_for_worker_dict, 'input_image': img_np_data}
@@ -69,7 +69,7 @@ def add_or_update_task_in_queue(state_dict_gr_state, *args_from_ui_controls_tupl
                     break
             queue_state["editing_task_id"] = None
     else:
-        with shared_state.queue_lock:
+        with shared_state_module.shared_state_instance.queue_lock:
             next_id = queue_state["next_id"]
             task = {"id": next_id, "params": {**base_params_for_worker_dict, 'input_image': img_np_data}, "status": "pending"}
             queue_state["queue"].append(task)
@@ -88,7 +88,7 @@ def cancel_edit_mode_action(state_dict_gr_state):
 
 def handle_queue_action_on_select(evt: gr.SelectData, state_dict_gr_state, *ui_param_controls_tuple):
     if evt.index is None or evt.value not in ["↑", "↓", "✖", "✎"]:
-        return [state_dict_gr_state, queue_helpers.update_queue_df_display(queue_helpers.get_queue_state(state_dict_gr_state))] + [gr.update()] * (1 + len(shared_state.ALL_TASK_UI_KEYS) + 4)
+        return [state_dict_gr_state, queue_helpers.update_queue_df_display(queue_helpers.get_queue_state(state_dict_gr_state))] + [gr.update()] * (1 + len(shared_state_module.ALL_TASK_UI_KEYS) + 4)
     row_index, _ = evt.index
     button_clicked = evt.value
     queue_state = queue_helpers.get_queue_state(state_dict_gr_state)
@@ -112,15 +112,15 @@ def handle_queue_action_on_select(evt: gr.SelectData, state_dict_gr_state, *ui_p
         img_np_from_task = params_to_load_to_ui.get('input_image')
         img_update = gr.update(value=Image.fromarray(img_np_from_task), visible=True) if isinstance(img_np_from_task, np.ndarray) else gr.update(value=None, visible=False) # type: ignore
         # Corrected: UI_TO_WORKER_PARAM_MAP keys are K enums, not their string values.
-        ui_updates = [gr.update(value=params_to_load_to_ui.get(shared_state.UI_TO_WORKER_PARAM_MAP.get(key), None)) for key in shared_state.ALL_TASK_UI_KEYS]
+        ui_updates = [gr.update(value=params_to_load_to_ui.get(shared_state_module.UI_TO_WORKER_PARAM_MAP.get(key), None)) for key in shared_state_module.ALL_TASK_UI_KEYS]
         return [state_dict_gr_state, queue_helpers.update_queue_df_display(queue_state), img_update] + ui_updates + [gr.update(), gr.update(), gr.update(value="Update Task", variant="primary"), gr.update(visible=True)]
-    return [state_dict_gr_state, queue_helpers.update_queue_df_display(queue_state)] + [gr.update()] * (len(shared_state.ALL_TASK_UI_KEYS) + 5)
+    return [state_dict_gr_state, queue_helpers.update_queue_df_display(queue_state)] + [gr.update()] * (len(shared_state_module.ALL_TASK_UI_KEYS) + 5)
 
 
 def clear_task_queue_action(state_dict_gr_state):
     queue_state = queue_helpers.get_queue_state(state_dict_gr_state)
     queue = queue_state["queue"]
-    with shared_state.queue_lock:
+    with shared_state_module.shared_state_instance.queue_lock:
         initial_count = len(queue)
         # Keep tasks that are NOT 'pending'. This includes 'processing', 'done', 'error', 'aborted'.
         # A task's status defaults to 'pending' if not explicitly set.
@@ -144,7 +144,7 @@ def request_preview_generation_action(state_dict_gr_state):
         return state_dict_gr_state
     
     # Set the dedicated preview request flag. The worker will check this after each segment.
-    shared_state.preview_request_flag.set()
+    shared_state_module.shared_state_instance.preview_request_flag.set()
     gr.Info("Preview requested. A video of the current segment will be generated when it completes.")
     
     return state_dict_gr_state
@@ -172,7 +172,7 @@ def save_queue_to_zip(state_dict_gr_state):
                         img.save(buf, format='PNG')
                         zf.writestr(img_filename, buf.getvalue())
                 queue_manifest.append(manifest_entry)
-            zf.writestr(shared_state.QUEUE_STATE_JSON_IN_ZIP, json.dumps(queue_manifest, indent=4))
+            zf.writestr(shared_state_module.QUEUE_STATE_JSON_IN_ZIP, json.dumps(queue_manifest, indent=4))
         gr.Info(f"Queue with {len(queue)} tasks prepared for download.")
         return state_dict_gr_state, temp_zip_path
     except Exception as e:
@@ -195,10 +195,10 @@ def load_queue_from_zip(state_dict_gr_state, zip_file_or_path):
     try:
         with tempfile.TemporaryDirectory() as tmpdir_extract:
             with zipfile.ZipFile(filepath, 'r') as zf:
-                if shared_state.QUEUE_STATE_JSON_IN_ZIP not in zf.namelist():
-                    raise ValueError(f"'{shared_state.QUEUE_STATE_JSON_IN_ZIP}' not found in zip")
+                if shared_state_module.QUEUE_STATE_JSON_IN_ZIP not in zf.namelist():
+                    raise ValueError(f"'{shared_state_module.QUEUE_STATE_JSON_IN_ZIP}' not found in zip")
                 zf.extractall(tmpdir_extract)
-            manifest_path = os.path.join(tmpdir_extract, shared_state.QUEUE_STATE_JSON_IN_ZIP)
+            manifest_path = os.path.join(tmpdir_extract, shared_state_module.QUEUE_STATE_JSON_IN_ZIP)
             with open(manifest_path, 'r', encoding='utf-8') as f:
                 loaded_manifest = json.load(f)
             for task_data in loaded_manifest:
@@ -219,7 +219,7 @@ def load_queue_from_zip(state_dict_gr_state, zip_file_or_path):
                         error_messages.append(f"Missing img file for task {task_id}: {image_ref}")
                 params['input_image'] = img_np
                 newly_loaded_queue.append({"id": task_id, "params": params, "status": "pending"})
-        with shared_state.queue_lock:
+        with shared_state_module.shared_state_instance.queue_lock:
             queue_state["queue"] = newly_loaded_queue
             queue_state["next_id"] = max(max_id_in_file + 1, queue_state.get("next_id", 1))
         gr.Info(f"Loaded {len(newly_loaded_queue)} tasks ({loaded_image_count} images).")
@@ -256,8 +256,8 @@ def process_task_queue_main_loop(state_dict_gr_state, *lora_control_values): # n
 
     if queue_state.get("processing", False):
         gr.Info("Stop signal sent. Waiting for current step to finish...")
-        shared_state.interrupt_flag.set()  # Signal a hard stop for the queue loop
-        shared_state.abort_state['level'] = 2  # Signal a hard stop for the worker
+        shared_state_module.shared_state_instance.interrupt_flag.set()  # Signal a hard stop for the queue loop
+        shared_state_module.shared_state_instance.abort_state['level'] = 2  # Signal a hard stop for the worker
         logger.info("Stop signal sent to worker. Interrupt Level: 2.")
         yield (
             state_dict_gr_state,
@@ -273,8 +273,8 @@ def process_task_queue_main_loop(state_dict_gr_state, *lora_control_values): # n
         return
 
     # --- START LOGIC ---
-    shared_state.interrupt_flag.clear()
-    shared_state.abort_state.update({"level": 0, "last_click_time": 0})
+    shared_state_module.shared_state_instance.interrupt_flag.clear()
+    shared_state_module.shared_state_instance.abort_state.update({"level": 0, "last_click_time": 0})
 
     if not queue_state["queue"]:
         gr.Info("Queue is empty. Add tasks to process.")
@@ -310,12 +310,9 @@ def process_task_queue_main_loop(state_dict_gr_state, *lora_control_values): # n
             lora_name, lora_weight, lora_targets = lora_control_values
             lora_handler.apply_lora(lora_name, lora_weight, lora_targets)
 
-        while queue_state["queue"] and not shared_state.interrupt_flag.is_set():
-            with shared_state.queue_lock:
+        while queue_state["queue"] and not shared_state_module.shared_state_instance.interrupt_flag.is_set():
+            with shared_state_module.shared_state_instance.queue_lock:
                 current_task = queue_state["queue"][0]
-
-            # Reset preview request flag for the new task
-            queue_state['preview_requested'] = False
 
             if current_task.get("params", {}).get("seed") == -1:
                 current_task["params"]["seed"] = np.random.randint(0, 2**32 - 1)
@@ -334,7 +331,7 @@ def process_task_queue_main_loop(state_dict_gr_state, *lora_control_values): # n
                 gr.update(interactive=False),
             )
 
-            worker_args = {**current_task["params"], "task_id": current_task["id"], **shared_state.models}
+            worker_args = {**current_task["params"], "task_id": current_task["id"], **shared_state_module.shared_state_instance.models}
             worker_args.pop('transformer', None) # The worker doesn't take the transformer as a direct kwarg.
             async_run(worker_wrapper, output_queue_ref=output_stream.output_queue, **worker_args)
 
@@ -343,7 +340,7 @@ def process_task_queue_main_loop(state_dict_gr_state, *lora_control_values): # n
 
             while True:
                 # Add an explicit interrupt check here to make the Stop button more responsive.
-                if shared_state.interrupt_flag.is_set():
+                if shared_state_module.shared_state_instance.interrupt_flag.is_set():
                     break
 
                 flag, data = output_stream.output_queue.next()
@@ -351,27 +348,14 @@ def process_task_queue_main_loop(state_dict_gr_state, *lora_control_values): # n
                 if flag == "progress":
                     task_id, preview_np, desc, html = data
 
-                    # --- New logic to control Create Preview button ---
-                    create_preview_interactive = True
-                    # Disable if a preview was already requested
-                    if queue_state.get('preview_requested', False):
-                        create_preview_interactive = False
-                    else:
-                        # Try to parse segment info from description to disable on first/last segment
-                        if 'Segment' in desc:
-                            try:
-                                parts = desc.split('Segment ')[1].split('/')
-                                current_segment = int(parts[0])
-                                total_segments = int(parts[1].split(' ')[0])
-                                if total_segments > 1 and (current_segment == 1 or current_segment == total_segments):
-                                    create_preview_interactive = False
-                            except (ValueError, IndexError):
-                                pass # Failed to parse, leave button active as a fallback
-
-                    yield (state_dict_gr_state, gr.update(), gr.update(), gr.update(value=preview_np), desc, html, gr.update(), gr.update(interactive=create_preview_interactive), gr.update())
+                    # This yield only updates the progress display components.
+                    # Button state is handled by event_handlers.update_button_states,
+                    # which is called by the main UI thread after specific events.
+                    yield (state_dict_gr_state, gr.update(), gr.update(), gr.update(value=preview_np), desc, html, gr.update(), gr.update(), gr.update())
                 elif flag == "file":
                     task_id, new_video_path, _ = data
                     last_video_path_for_task = new_video_path
+                    # A file being saved (especially a preview) is a key time to update button states.
                     yield (state_dict_gr_state, gr.update(), gr.update(value=new_video_path), gr.update(), gr.update(), gr.update(), gr.update(), gr.update(), gr.update())
                 elif flag == "crash":
                     task_crashed = True
@@ -386,7 +370,7 @@ def process_task_queue_main_loop(state_dict_gr_state, *lora_control_values): # n
                             current_task["final_output_filename"] = last_video_path_for_task
                     break
 
-            with shared_state.queue_lock:
+            with shared_state_module.shared_state_instance.queue_lock:
                 if current_task["status"] in ["done", "error", "aborted"] and queue_state["queue"] and queue_state["queue"][0]["id"] == current_task["id"]:
                     queue_state["queue"].pop(0)
 
@@ -409,11 +393,11 @@ def process_task_queue_main_loop(state_dict_gr_state, *lora_control_values): # n
                 gr.update(interactive=False),
             )
 
-            if shared_state.interrupt_flag.is_set():
+            if shared_state_module.shared_state_instance.interrupt_flag.is_set():
                 gr.Info("Queue processing stopped by user.")
                 break
 
-            shared_state.abort_state["level"] = 0
+            shared_state_module.shared_state_instance.abort_state["level"] = 0
 
     finally:
         logger.info("Processing finished. Reverting all LoRAs to clean up.")
@@ -421,7 +405,7 @@ def process_task_queue_main_loop(state_dict_gr_state, *lora_control_values): # n
 
     queue_state["processing"] = False
     state_dict_gr_state["active_output_stream_queue"] = None
-    final_status_message = "All tasks processed." if not shared_state.interrupt_flag.is_set() else "Queue processing stopped."
+    final_status_message = "All tasks processed." if not shared_state_module.shared_state_instance.interrupt_flag.is_set() else "Queue processing stopped."
     final_video_to_show = state_dict_gr_state.get("last_completed_video_path") # This line was missing
 
     yield (

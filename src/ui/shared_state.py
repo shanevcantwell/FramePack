@@ -2,35 +2,50 @@
 import threading
 from .enums import ComponentKey as K
 
-# --- Application-wide Threading Controls ---
-# Lock for thread-safe queue modifications.
-queue_lock = threading.Lock()
+class SharedState:
+    _instance = None
+    _initialized = False
+
+    def __new__(cls):
+        """Ensures only one instance of SharedState exists (singleton pattern)."""
+        if cls._instance is None:
+            cls._instance = super(SharedState, cls).__new__(cls)
+        return cls._instance
+
+    def __init__(self):
+        """Initializes the SharedState attributes only once."""
+        if self._initialized:
+            return
+
+        # --- Application-wide Threading Controls ---
+        # Lock for thread-safe queue modifications.
+        self.queue_lock: threading.Lock = threading.Lock()
 
 # Event to signal the abortion of the current processing task.
 # This is kept for compatibility and as a simple, overarching abort flag.
-interrupt_flag = threading.Event()
+        self.interrupt_flag: threading.Event = threading.Event()
 
 # Event to signal that a preview should be generated for the current segment.
-preview_request_flag = threading.Event()
+        self.preview_request_flag: threading.Event = threading.Event()
 
 # State dictionary for the multi-level abort feature.
 # 'level' 0: No abort.
 # 'level' 2: Hard abort (triggered by the Stop Processing button).
-abort_state = {'level': 0, 'last_click_time': 0}
-
+        self.abort_state: dict = {'level': 0, 'last_click_time': 0}
 
 # --- Model and Global State Containers ---
 # This dictionary will be populated at runtime by the main script after the models are loaded.
-models = {}
-
+        self.models: dict = {}
 # This dictionary holds the application state, which is passed to the atexit
 # handler to enable the autosave functionality on browser close or exit.
-global_state_for_autosave = {}
-
+        self.global_state_for_autosave: dict = {}
 # Dictionary to hold system-level information detected at startup.
-system_info = {
-    'is_legacy_gpu': False,
-}
+        self.system_info: dict = {'is_legacy_gpu': False}
+
+        self._initialized = True
+
+# Instantiate the singleton instance. Other modules will import 'shared_state_instance'.
+shared_state_instance = SharedState()
 
 
 # --- UI and Parameter Mapping Constants ---

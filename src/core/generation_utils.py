@@ -2,7 +2,7 @@
 # Contains helper functions refactored from generation_core.py
 
 import os
-from ui import shared_state
+from ui.shared_state import shared_state_instance
 from diffusers_helper.memory import load_model_as_complete, unload_complete_models, gpu
 from diffusers_helper.hunyuan import vae_decode
 from diffusers_helper.utils import save_bcthw_as_mp4
@@ -71,7 +71,7 @@ def _save_final_preview(history_latents, vae, job_id, task_id, outputs_folder, c
 
     # Check for a hard abort (level 2) before starting the expensive decode.
     # This allows a double-click abort to interrupt the graceful save.
-    if shared_state.abort_state['level'] >= 2:
+    if shared_state_instance.abort_state['level'] >= 2:
         print(f"Task {task_id}: Hard abort detected before final VAE decode.")
         raise InterruptedError("Hard abort during final save.")
 
@@ -88,7 +88,7 @@ def _save_final_preview(history_latents, vae, job_id, task_id, outputs_folder, c
         unload_complete_models(vae)
 
     # Add a second check for a hard abort after the decode, before writing the file.
-    if shared_state.abort_state['level'] >= 2:
+    if shared_state_instance.abort_state['level'] >= 2:
         print(f"Task {task_id}: Hard abort detected before final MP4 write.")
         raise InterruptedError("Hard abort during final save.")
 

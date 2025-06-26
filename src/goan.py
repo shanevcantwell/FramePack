@@ -19,7 +19,7 @@ from ui import (
     queue as queue_manager,
     workspace as workspace_manager,
     lora as lora_manager,
-    shared_state,
+    shared_state as shared_state_module, # Import module for access to instance
     switchboard
 )
 
@@ -42,7 +42,7 @@ block = ui_components['block']
 switchboard.wire_all_events(ui_components)
 
 # --- Application Load/Startup Events ---
-atexit.register(queue_manager.autosave_queue_on_exit_action, shared_state.global_state_for_autosave)
+atexit.register(queue_manager.autosave_queue_on_exit_action, shared_state_module.shared_state_instance.global_state_for_autosave)
 
 # --- Application Launch ---
 if __name__ == "__main__":

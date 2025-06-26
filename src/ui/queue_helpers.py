@@ -8,7 +8,7 @@ import base64
 import io
 from diffusers_helper.memory import DynamicSwapInstaller, cpu
 
-from . import shared_state
+from .shared_state import shared_state_instance
 
 def get_queue_state(state_dict_gr_state):
     """
@@ -94,7 +94,7 @@ def move_task_in_queue(state_dict_gr_state, direction: str, task_index: int):
     queue_state = get_queue_state(state_dict_gr_state)
     queue = queue_state["queue"]
     
-    with shared_state.queue_lock:
+    with shared_state_instance.queue_lock:
         if direction == 'up' and task_index > 0:
             queue[task_index], queue[task_index-1] = queue[task_index-1], queue[task_index]
         elif direction == 'down' and task_index < len(queue) - 1:
@@ -108,7 +108,7 @@ def remove_task_from_queue(state_dict_gr_state, task_index: int):
     queue = queue_state["queue"]
     removed_task_id = None
     
-    with shared_state.queue_lock:
+    with shared_state_instance.queue_lock:
         if 0 <= task_index < len(queue):
             removed_task = queue.pop(task_index)
             removed_task_id = removed_task['id']
@@ -126,9 +126,9 @@ def apply_loras_from_state(app_state, *lora_control_values):
         return
 
     model_map = {
-        "transformer": shared_state.models.get('transformer'),
-        "text_encoder": shared_state.models.get('text_encoder'),
-        "text_encoder_2": shared_state.models.get('text_encoder_2')
+        "transformer": shared_state_instance.models.get('transformer'),
+        "text_encoder": shared_state_instance.models.get('text_encoder'),
+        "text_encoder_2": shared_state_instance.models.get('text_encoder_2')
     }
     models_to_affect = [m for m in model_map.values() if m is not None and (hasattr(m, 'load_adapter') or 'DynamicSwap' in m.__class__.__name__)]
 

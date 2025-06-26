@@ -10,7 +10,7 @@ from . import (
     metadata as metadata_manager,
     queue as queue_manager,
     event_handlers,
-    shared_state
+    shared_state as shared_state_module # Import module for access to instance
 )
 
 def _wire_lora_events(components: dict):
@@ -39,6 +39,7 @@ def _wire_workspace_events(components: dict):
         components[K.DOWNLOAD_IMAGE_BUTTON_UI],
         components[K.SAVE_QUEUE_BUTTON_UI],
         components[K.CLEAR_QUEUE_BUTTON_UI],
+        components[K.STOP_PROCESSING_BUTTON_UI],
     ]
     # Use the workspace's default map as the single source of truth for UI components.
     # This ensures all settings, including FPS, are included.
@@ -77,8 +78,10 @@ def _wire_image_and_metadata_events(components: dict):
         components[K.DOWNLOAD_IMAGE_BUTTON_UI],
         components[K.SAVE_QUEUE_BUTTON_UI],
         components[K.CLEAR_QUEUE_BUTTON_UI],
+        components[K.STOP_PROCESSING_BUTTON_UI],
     ]
-    creative_ui_components = [components[key] for key in shared_state.CREATIVE_UI_KEYS]
+    creative_ui_components = [components[key] for key in shared_state_module.CREATIVE_UI_KEYS]
+   
     
     clear_button_outputs = [
         components[K.IMAGE_FILE_INPUT_UI],
@@ -119,8 +122,8 @@ def _wire_image_and_metadata_events(components: dict):
     ))
 
     (components[K.DOWNLOAD_IMAGE_BUTTON_UI].click(
-        fn=event_handlers.prepare_image_for_download,
-        inputs=([components[K.INPUT_IMAGE_DISPLAY_UI], components[K.APP_STATE], gr.State(shared_state.CREATIVE_UI_KEYS)] + creative_ui_components),
+        fn=event_handlers.prepare_image_for_download, # ui_keys is passed as gr.State(shared_state_module.CREATIVE_UI_KEYS)
+        inputs=([components[K.INPUT_IMAGE_DISPLAY_UI], components[K.APP_STATE], gr.State(shared_state_module.CREATIVE_UI_KEYS)] + creative_ui_components),
         outputs=components[K.IMAGE_DOWNLOADER_UI], show_progress=True, api_name="download_image_with_metadata"
     ).then(
         fn=None, inputs=None, outputs=None,
@@ -141,6 +144,7 @@ def _wire_queue_events(components: dict):
         components[K.DOWNLOAD_IMAGE_BUTTON_UI],
         components[K.SAVE_QUEUE_BUTTON_UI],
         components[K.CLEAR_QUEUE_BUTTON_UI],
+        components[K.STOP_PROCESSING_BUTTON_UI],
     ]
     # Use the workspace's default map as the single source of truth for UI components.
     default_keys_map = workspace_manager.get_default_values_map()
@@ -166,6 +170,12 @@ def _wire_queue_events(components: dict):
         outputs=button_state_outputs
     ))
     (components[K.PROCESS_QUEUE_BUTTON].click(
+        fn=queue_manager.process_task_queue_main_loop, inputs=[components[K.APP_STATE]] + lora_ui_controls, outputs=process_q_outputs
+    ).then(
+        fn=event_handlers.update_button_states, inputs=[components[K.APP_STATE], components[K.INPUT_IMAGE_DISPLAY_UI], components[K.QUEUE_DF_DISPLAY_UI]],
+        outputs=button_state_outputs
+    ))
+    (components[K.STOP_PROCESSING_BUTTON_UI].click(
         fn=queue_manager.process_task_queue_main_loop, inputs=[components[K.APP_STATE]] + lora_ui_controls, outputs=process_q_outputs
     ).then(
         fn=event_handlers.update_button_states, inputs=[components[K.APP_STATE], components[K.INPUT_IMAGE_DISPLAY_UI], components[K.QUEUE_DF_DISPLAY_UI]],
@@ -244,7 +254,7 @@ def _wire_app_startup_events(components: dict):
     block = components[K.BLOCK]
     
     # Define the outputs for each step in the startup chain
-    workspace_ui_outputs = [components[key] for key in shared_state.ALL_TASK_UI_KEYS]
+    workspace_ui_outputs = [components[key] for key in shared_state_module.ALL_TASK_UI_KEYS]  
     image_ui_outputs = [
         components[K.INPUT_IMAGE_DISPLAY_UI],
         components[K.CLEAR_IMAGE_BUTTON_UI],
@@ -259,6 +269,7 @@ def _wire_app_startup_events(components: dict):
         components[K.DOWNLOAD_IMAGE_BUTTON_UI],
         components[K.SAVE_QUEUE_BUTTON_UI],
         components[K.CLEAR_QUEUE_BUTTON_UI],
+        components[K.STOP_PROCESSING_BUTTON_UI],
     ]
 
     # The .load event now uses a more robust, sequential chain of .then() calls.

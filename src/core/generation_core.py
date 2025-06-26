@@ -17,7 +17,7 @@ from diffusers_helper.bucket_tools import find_nearest_bucket
 from diffusers_helper.gradio.progress_bar import make_progress_bar_html
 from core import model_loader # Import model_loader
 from ui import metadata as metadata_manager
-from ui import shared_state
+from ui import shared_state as shared_state_module
 from core import generation_utils
 from .generation_utils import generate_roll_off_schedule
 import traceback
@@ -68,8 +68,10 @@ def worker(
     os.makedirs(outputs_folder, exist_ok=True)
 
     # --- Gemini: do not touch - "secret sauce"
-    total_latent_sections = (total_second_length * fps) / (latent_window_size * 4)
-    total_latent_sections = int(max(round(total_latent_sections), 1))
+    # A "segment" or "section" is one generation loop, which produces (LWS * 4 - 3) frames.
+    total_frames = int(total_second_length * fps)
+    frames_per_segment = latent_window_size * 4 - 3
+    total_latent_sections = int(max(round(total_frames / frames_per_segment), 1)) if frames_per_segment > 0 else 1
 
     job_id = f"{generate_timestamp()}_task{task_id}"
     output_queue_ref.push(
@@ -103,7 +105,14 @@ def worker(
     # Ensure transformer is loaded before accessing its properties
     transformer = model_loader.get_transformer_model()
     original_fp32_setting = transformer.high_quality_fp32_output_for_inference # Store original setting
-    transformer.high_quality_fp32_output_for_inference = use_fp32_transformer_output
+
+    # For legacy GPUs, we MUST use FP32 output, regardless of the UI setting.
+    is_legacy_gpu = shared_state_module.shared_state_instance.system_info.get('is_legacy_gpu', False)
+    final_use_fp32 = True if is_legacy_gpu else use_fp32_transformer_output
+    if is_legacy_gpu and not use_fp32_transformer_output:
+        print("Legacy GPU detected: Forcing FP32 transformer output for stability, overriding UI setting.")
+
+    transformer.high_quality_fp32_output_for_inference = final_use_fp32
 
     # Initialize history_latents_for_abort here to ensure it's always defined
     # It will be overwritten within the loop if generation proceeds
@@ -313,9 +322,8 @@ def worker(
             )
 
             def callback_diffusion_step(d):
-                if shared_state.abort_state['level'] >= 2:
-                    raise KeyboardInterrupt("Abort signal received during sampling.")
-                
+                if shared_state_module.shared_state_instance.abort_state['level'] >= 2: # Check for hard abort signal
+                    raise KeyboardInterrupt("Hard abort signal received during sampling.")
                 current_diffusion_step = d["i"] + 1
 
                 preview_latent = d["denoised"]
@@ -424,6 +432,21 @@ def worker(
                 )
                 load_model_as_complete(vae, target_device=gpu)
 
+            # Let the UI know that the expensive VAE decoding is happening
+            output_queue_ref.push(
+                (
+                    "progress",
+                    (
+                        task_id,
+                        None,  # No image preview here
+                        f"Segment {current_loop_segment_number}/{total_latent_sections}: Decoding frames...",
+                        make_progress_bar_html(
+                            100, "VAE Decode"
+                        ),  # Progress bar is full from sampling
+                    ),
+                )
+            )
+
             real_history_latents = history_latents[
                 :, :, :total_generated_latent_frames, :, :
             ]
@@ -451,34 +474,49 @@ def worker(
 
             # --- Gemini start again
             # --- Unified and Corrected MP4 Saving Logic ---
-            should_save_mp4_this_iteration = False
+            # --- Graceful Preview & Segment Saving Logic ---
+            # This block determines if an MP4 should be saved for the current segment.
+            # It is designed to be non-destructive; requesting a preview will not stop the generation.
 
-            # Condition 0: A preview was explicitly requested for this segment.
-            if shared_state.preview_request_flag.is_set():
-                should_save_mp4_this_iteration = True
-                # Clear the flag now that the request is being handled.
-                shared_state.preview_request_flag.clear()
+            # First, check if a preview has been manually requested by the user.
+            is_preview_request = shared_state_module.shared_state_instance.preview_request_flag.is_set()
+            if is_preview_request:
+                # IMPORTANT: Clear the flag immediately after checking. This is the core of the
+                # "graceful preview" feature, ensuring the worker continues generation.
+                shared_state_module.shared_state_instance.preview_request_flag.clear()
 
-            # Condition 1: Always save the very first segment (iteration 0)
-            if latent_padding_iteration == 0:
-                should_save_mp4_this_iteration = True
-            # Condition 2: Always save the last segment
-            elif is_last_section:
-                should_save_mp4_this_iteration = True
-            # Condition 3: Save if the user specified this segment number (1-indexed)
-            elif (
-                parsed_segments_to_decode_set
-                and current_loop_segment_number in parsed_segments_to_decode_set
-            ):
-                should_save_mp4_this_iteration = True
-            # Condition 4: Save based on the periodic preview_frequency setting
-            elif (
-                preview_frequency > 0
-                and (current_loop_segment_number % preview_frequency == 0)
-            ):
-                should_save_mp4_this_iteration = True
+            # Next, determine if we should save based on any of the automatic criteria.
+            should_save_automatically = (
+                # Always save the very first segment
+                latent_padding_iteration == 0 or
+                # Always save the final completed video
+                is_last_section or
+                # Save if the user specified this segment number
+                (parsed_segments_to_decode_set and current_loop_segment_number in parsed_segments_to_decode_set) or
+                # Save based on the periodic preview_frequency setting
+                (preview_frequency > 0 and (current_loop_segment_number % preview_frequency == 0))
+            )
 
-            if should_save_mp4_this_iteration:
+            if is_preview_request or should_save_automatically:
+                # Give the user feedback that the VAE/Saving process is happening
+                save_hint = (
+                    "Saving Preview..." if is_preview_request else "Saving Segment..."
+                )
+                if is_last_section:
+                    save_hint = "Saving Final Video..."
+
+                output_queue_ref.push(
+                    (
+                        "progress",
+                        (
+                            task_id,
+                            None,
+                            f"Segment {current_loop_segment_number}/{total_latent_sections}: {save_hint}",
+                            make_progress_bar_html(100, save_hint),
+                        ),
+                    )
+                )
+
                 segment_mp4_filename = os.path.join(
                     outputs_folder,
                     f"{job_id}_segment_{current_loop_segment_number}_frames_{current_video_frame_count}.mp4",
@@ -487,6 +525,9 @@ def worker(
                     history_pixels, segment_mp4_filename, fps=fps, crf=mp4_crf
                 )
                 final_output_filename = segment_mp4_filename
+                # Always update the graceful abort path to the latest saved video. This ensures
+                # that if an abort happens, the UI can link to the last completed segment.
+                graceful_abort_preview_path = segment_mp4_filename
                 print(
                     f"Task {task_id}: SAVED MP4 for segment {current_loop_segment_number} to {segment_mp4_filename}. Total video frames: {current_video_frame_count}"
                 )

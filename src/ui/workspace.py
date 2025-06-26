@@ -7,8 +7,9 @@ import os
 import traceback
 import tempfile
 
-from . import shared_state
+from . import shared_state as shared_state_module
 from . import metadata as metadata_manager
+from .enums import ComponentKey as K
 from . import legacy_support
 from PIL import Image
 
@@ -24,27 +25,27 @@ def get_default_values_map():
     Returns a dictionary with the default values for all UI settings.
     """
     return {
-        'prompt_ui': '',
-        'n_prompt_ui': '',
-        'total_second_length_ui': 5.0,
-        'seed_ui': -1,
-        'preview_frequency_ui': 5,
-        'segments_to_decode_csv_ui': '',
-        'fps_ui': 30,
-        'gs_ui': 10.0,
-        'gs_schedule_shape_ui': 'Off',
-        'gs_final_ui': 10.0,
-        'roll_off_start_ui': 75,
-        'roll_off_factor_ui': 1.0,
-        'steps_ui': 25,
-        'cfg_ui': 1.0,
-        'rs_ui': 0.0,
-        'use_teacache_ui': True,
-        'use_fp32_transformer_output_checkbox_ui': False,
-        'gpu_memory_preservation_ui': 6.0,
-        'mp4_crf_ui': 18,
-        'output_folder_ui_ctrl': outputs_folder,
-        'latent_window_size_ui': 9,
+        K.PROMPT_UI: '',
+        K.N_PROMPT_UI: '',
+        K.TOTAL_SECOND_LENGTH_UI: 5.0,
+        K.SEED_UI: -1,
+        K.PREVIEW_FREQUENCY_UI: 5,
+        K.SEGMENTS_TO_DECODE_CSV_UI: '',
+        K.FPS_UI: 30,
+        K.GS_UI: 10.0,
+        K.GS_SCHEDULE_SHAPE_UI: 'Off',
+        K.GS_FINAL_UI: 10.0,
+        K.ROLL_OFF_START_UI: 75,
+        K.ROLL_OFF_FACTOR_UI: 1.0,
+        K.STEPS_UI: 25,
+        K.CFG_UI: 1.0,
+        K.RS_UI: 0.0,
+        K.USE_TEACACHE_UI: True,
+        K.USE_FP32_TRANSFORMER_OUTPUT_CHECKBOX_UI: False,
+        K.GPU_MEMORY_PRESERVATION_UI: 6.0,
+        K.MP4_CRF_UI: 18,
+        K.OUTPUT_FOLDER_UI_CTRL: outputs_folder,
+        K.LATENT_WINDOW_SIZE_UI: 9,
     }
 
 def save_settings_to_file(filepath, settings_dict):
@@ -65,7 +66,10 @@ def load_settings_from_file(filepath, return_updates=True):
     if filepath and os.path.exists(filepath):
         try:
             with open(filepath, 'r', encoding='utf-8') as f:
-                loaded_settings = json.load(f)
+                loaded_settings_str_keys = json.load(f)
+                # Create a set of all valid string values from the ComponentKey enum for a robust check.
+                valid_keys = {item.value for item in K}
+                loaded_settings = {K(k): v for k, v in loaded_settings_str_keys.items() if k in valid_keys}
 
             legacy_support.convert_legacy_params(loaded_settings)
             gr.Info(f"Loaded workspace from {filepath}")
@@ -82,13 +86,13 @@ def load_settings_from_file(filepath, return_updates=True):
 
     # Iterate over the keys from the defaults map to ensure all settings are handled.
     for key in default_values.keys():
-        value = final_settings.get(key, default_values.get(key))
+        value = final_settings.get(key, default_values[key])
         try:
-            if key in ['seed_ui', 'latent_window_size_ui', 'steps_ui', 'mp4_crf_ui', 'preview_frequency_ui', 'roll_off_start_ui', 'fps_ui']:
+            if key in [K.SEED_UI, K.LATENT_WINDOW_SIZE_UI, K.STEPS_UI, K.MP4_CRF_UI, K.PREVIEW_FREQUENCY_UI, K.ROLL_OFF_START_UI, K.FPS_UI]:
                 value = int(value)
-            elif key in ['total_second_length_ui', 'cfg_ui', 'gs_ui', 'rs_ui', 'gpu_memory_preservation_ui', 'gs_final_ui', 'roll_off_factor_ui']:
+            elif key in [K.TOTAL_SECOND_LENGTH_UI, K.CFG_UI, K.GS_UI, K.RS_UI, K.GPU_MEMORY_PRESERVATION_UI, K.GS_FINAL_UI, K.ROLL_OFF_FACTOR_UI]:
                 value = float(value)
-            elif key in ['use_teacache_ui', 'use_fp32_transformer_output_checkbox_ui']:
+            elif key in [K.USE_TEACACHE_UI, K.USE_FP32_TRANSFORMER_OUTPUT_CHECKBOX_UI]:
                 value = bool(value)
         except (ValueError, TypeError):
             value = default_values.get(key)
@@ -125,8 +129,8 @@ def get_initial_output_folder_from_settings():
 
 def save_workspace(*ui_values_tuple):
     """Prepares the full workspace settings as a JSON string for download."""
-    ui_keys_list = [key.value for key in shared_state.ALL_TASK_UI_KEYS]
-    settings_to_save = dict(zip(ui_keys_list, ui_values_tuple))
+    # Convert enum keys to strings for JSON serialization
+    settings_to_save = {key.value: value for key, value in zip(shared_state_module.ALL_TASK_UI_KEYS, ui_values_tuple)}
     json_data = json.dumps(settings_to_save, indent=4)
 
     try:
@@ -145,7 +149,8 @@ def save_as_default_workspace(*ui_values_tuple):
     Saves the current UI settings as the default startup configuration.
     """
     # Use the keys from the defaults map as the single source of truth.
-    settings_to_save = dict(zip(get_default_values_map().keys(), ui_values_tuple))
+    # Convert enum keys to strings for JSON serialization
+    settings_to_save = {key.value: value for key, value in zip(get_default_values_map().keys(), ui_values_tuple)}
     save_settings_to_file(SETTINGS_FILENAME, settings_to_save)
     gr.Info(f"Default settings saved. Restart the application for changes to take effect.")
     return gr.update(visible=True), gr.update(visible=True)
@@ -153,16 +158,16 @@ def save_as_default_workspace(*ui_values_tuple):
 def save_ui_and_image_for_refresh(*args_from_ui_controls_tuple):
     """Saves UI state and the current image to temporary files for session recovery."""
     pil_image = args_from_ui_controls_tuple[0]
-    all_ui_values_tuple = args_from_ui_controls_tuple[1:]
-    ui_keys_list = [key.value for key in shared_state.ALL_TASK_UI_KEYS]
-    full_params_map = dict(zip(ui_keys_list, all_ui_values_tuple))
-    settings_to_save = full_params_map.copy()
+    all_ui_values_tuple = args_from_ui_controls_tuple[1:] # All UI values except the image
+    # Create a map with Enum keys for consistency
+    full_params_map = dict(zip(shared_state_module.ALL_TASK_UI_KEYS, all_ui_values_tuple))
+    # Convert to string keys for JSON saving
+    settings_to_save = {key.value: value for key, value in full_params_map.items()}
 
     if pil_image and isinstance(pil_image, Image.Image):
         try:
-            creative_ui_keys = [key.value for key in shared_state.CREATIVE_UI_KEYS]
-            creative_ui_values = [full_params_map.get(key) for key in creative_ui_keys]
-            creative_params = metadata_manager.create_params_from_ui(shared_state.CREATIVE_UI_KEYS, creative_ui_values)
+            creative_ui_values = [full_params_map.get(key) for key in shared_state_module.CREATIVE_UI_KEYS] # Get values from the full map
+            creative_params = metadata_manager.create_params_from_ui(shared_state_module.CREATIVE_UI_KEYS, creative_ui_values)
             pnginfo_obj = metadata_manager.create_pnginfo_obj(creative_params)
 
             # Save the refresh image to a known temporary location
@@ -185,8 +190,7 @@ def load_workspace(uploaded_file):
     """Loads a workspace from an uploaded JSON file."""
     if uploaded_file is None or not hasattr(uploaded_file, 'name') or not os.path.exists(uploaded_file.name):
         gr.Warning("No valid file selected or uploaded.")
-        ui_keys_list = [key.value for key in shared_state.ALL_TASK_UI_KEYS]
-        return [gr.update()] * len(ui_keys_list)
+        return [gr.update()] * len(shared_state_module.ALL_TASK_UI_KEYS)
 
     return load_settings_from_file(uploaded_file.name)
 
@@ -277,8 +281,7 @@ def load_and_apply_startup_workspace():
     loaded_values = load_settings_from_file(settings_file_path, return_updates=False)
     
     # Create a dictionary mapping UI component keys to their loaded values.
-    ui_keys_list = [key.value for key in shared_state.ALL_TASK_UI_KEYS]
-    updates_map = dict(zip(ui_keys_list, loaded_values))
+    updates_map = dict(zip(shared_state_module.ALL_TASK_UI_KEYS, loaded_values))
 
     # --- Part 3: Load image (from load_image_from_path) ---
     pil_image = None
@@ -296,7 +299,7 @@ def load_and_apply_startup_workspace():
     
     # --- Part 4: Prepare all UI updates to be returned ---
     # Start with updates for the main workspace components
-    final_updates = [gr.update(value=updates_map.get(key.value)) for key in shared_state.ALL_TASK_UI_KEYS]
+    final_updates = [gr.update(value=updates_map.get(key)) for key in shared_state_module.ALL_TASK_UI_KEYS]
     
     # Add updates for the image display and its associated buttons
     final_updates.append(gr.update(value=pil_image, visible=has_image)) # INPUT_IMAGE_DISPLAY_UI

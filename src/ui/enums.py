@@ -24,6 +24,7 @@ class ComponentKey(StrEnum):
     DOWNLOAD_IMAGE_BUTTON_UI = auto()
     PROCESS_QUEUE_BUTTON = auto()
     CREATE_PREVIEW_BUTTON = auto()
+    STOP_PROCESSING_BUTTON_UI = auto()
     CANCEL_EDIT_TASK_BUTTON = auto()
     PROMPT_UI = auto()
     N_PROMPT_UI = auto()

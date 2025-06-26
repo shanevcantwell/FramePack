@@ -7,6 +7,8 @@ from gradio_modal import Modal
 # Import ComponentKey enum and workspace manager
 from .enums import ComponentKey as K
 from . import workspace as workspace_manager
+from . import queue as queue_manager
+from . import shared_state as shared_state_module
 
 def create_ui():
     """
@@ -98,7 +100,7 @@ def create_ui():
                     components[K.DOWNLOAD_IMAGE_BUTTON_UI] = gr.Button("Download Image", variant="secondary", interactive=False, elem_id="download_image_button")
                 components[K.PROCESS_QUEUE_BUTTON] = gr.Button("▶️ Process Queue", variant="primary", interactive=False)
                 components[K.CREATE_PREVIEW_BUTTON] = gr.Button("📸 Create Preview", variant="secondary", interactive=False, elem_id="create_preview_button")
-
+                components[K.STOP_PROCESSING_BUTTON_UI] = gr.Button("⏹️ Stop Processing", variant="stop", interactive=False)
             with gr.Column(scale=2, min_width=600):
                 components[K.PROMPT_UI] = gr.Textbox(label="Prompt", lines=10)
                 components[K.N_PROMPT_UI] = gr.Textbox(label="Negative Prompt", lines=4)
@@ -149,7 +151,10 @@ def create_ui():
 
                 with gr.Accordion("Debug Settings", open=False):
                     components[K.USE_TEACACHE_UI] = gr.Checkbox(label='Use TeaCache', value=True)
-                    components[K.USE_FP32_TRANSFORMER_OUTPUT_CHECKBOX_UI] = gr.Checkbox(label="Use FP32 Transformer Output", value=False)
+                    # Hide the FP32 checkbox on legacy GPUs, as it's forced on in the backend.
+                    is_legacy_gpu = shared_state_module.shared_state_instance.system_info.get('is_legacy_gpu', False)
+                    components[K.USE_FP32_TRANSFORMER_OUTPUT_CHECKBOX_UI] = gr.Checkbox(
+                        label="Use FP32 Transformer Output", value=False, visible=not is_legacy_gpu)
                     components[K.GPU_MEMORY_PRESERVATION_UI] = gr.Slider(label="GPU Preserved (GB)", minimum=4, maximum=128, value=6.0, step=0.1)
                     components[K.FPS_UI] = gr.Slider(label="MP4 Framerate (FPS)", minimum=1, maximum=60, value=30, step=1)
                     components[K.MP4_CRF_UI] = gr.Slider(label="MP4 CRF", minimum=0, maximum=51, value=18, step=1)

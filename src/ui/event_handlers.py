@@ -5,7 +5,7 @@ import tempfile
 from PIL import Image, PngImagePlugin
 
 from . import metadata as metadata_manager
-from . import shared_state
+from . import shared_state as shared_state_module
 from . import workspace as workspace_manager
 from .queue_helpers import get_queue_state
 from .queue import autosave_queue_on_exit_action
@@ -22,8 +22,10 @@ def safe_shutdown_action(app_state, *ui_values):
 def ui_update_total_segments(total_seconds_ui, latent_window_size_ui, fps_ui):
     """Calculates and displays the number of segments based on video length."""
     try:
-        total_segments = int(max(round((total_seconds_ui * fps_ui) / (latent_window_size_ui * 4)), 1))
-        return f"Calculated: {total_segments} Segments, {int(total_seconds_ui * fps_ui)} Total Frames"
+        total_frames = int(total_seconds_ui * fps_ui)
+        frames_per_segment = latent_window_size_ui * 4 - 3
+        total_segments = int(max(round(total_frames / frames_per_segment), 1)) if frames_per_segment > 0 else 1
+        return f"Calculated: {total_segments} Segments, {total_frames} Total Frames"
     except (TypeError, ValueError):
         return "Segments: Invalid input"
 
@@ -52,7 +54,7 @@ def process_upload_and_show_image(temp_file_data):
 
     pil_image, prompt_preview, params = metadata_manager.open_and_check_metadata(filepath)
 
-    has_loadable_metadata = bool(params and any(key in params for key in shared_state.CREATIVE_PARAM_KEYS))
+    has_loadable_metadata = bool(params and any(key in params for key in shared_state_module.CREATIVE_PARAM_KEYS))
 
     trigger_value = str(time.time()) if has_loadable_metadata else None
 
@@ -79,7 +81,7 @@ def prepare_image_for_download(pil_image, app_state, ui_keys, *creative_values):
         return None
 
     image_copy = pil_image.copy()
-    params_dict = metadata_manager.create_params_from_ui(ui_keys, creative_values)
+    params_dict = metadata_manager.create_params_from_ui(ui_keys, creative_values) # ui_keys is passed in, so it's fine
 
     lora_state = app_state.get('lora_state', {})
     if lora_state and lora_state.get('loaded_loras'):
@@ -115,21 +117,16 @@ def update_button_states(app_state, input_image_pil, queue_df_data):
     image_actions_interactive = has_image
     add_task_variant = "primary" if image_actions_interactive else "secondary"
 
-    # Process Queue Button: Acts as Start/Stop.
-    process_queue_interactive = (queue_has_tasks and not is_processing) or is_processing
-    if is_processing:
-        process_queue_variant = "stop"
-        process_queue_value = "⏹️ Stop Processing"
-    elif queue_has_tasks:
-        process_queue_variant = "primary"
-        process_queue_value = "▶️ Process Queue"
-    else: # No tasks, so it's disabled.
-        process_queue_variant = "secondary"
-        process_queue_value = "▶️ Process Queue"
+    # Process Queue Button: Active only if there are tasks and we are NOT processing.
+    process_queue_interactive = queue_has_tasks and not is_processing
+    process_queue_variant = "primary" if process_queue_interactive else "secondary"
+
+    # Stop Processing Button: Active only when processing is underway.
+    stop_processing_interactive = is_processing
 
     # Create Preview Button: Active only during processing, disabled if a preview is scheduled.
-    # (More granular control, e.g., first/last segment, is in the processing loop.)
-    create_preview_interactive = is_processing and not queue_state.get("preview_requested", False) # This determines interactivity
+    # This now correctly checks the shared flag that the worker uses.
+    create_preview_interactive = is_processing and not shared_state_module.shared_state_instance.preview_request_flag.is_set()
     create_preview_variant = "primary" if create_preview_interactive else "secondary" # This determines color (green if active, grey if disabled)
 
     # Save Queue Button: Active and green if there are tasks in the queue.
@@ -142,10 +139,11 @@ def update_button_states(app_state, input_image_pil, queue_df_data):
 
     return (
         gr.update(interactive=image_actions_interactive, variant=add_task_variant),      # ADD_TASK_BUTTON
-        gr.update(interactive=process_queue_interactive, variant=process_queue_variant, value=process_queue_value), # PROCESS_QUEUE_BUTTON
+        gr.update(interactive=process_queue_interactive, variant=process_queue_variant), # PROCESS_QUEUE_BUTTON
         gr.update(interactive=create_preview_interactive, variant=create_preview_variant), # CREATE_PREVIEW_BUTTON
         gr.update(interactive=image_actions_interactive, variant="secondary"), # CLEAR_IMAGE_BUTTON_UI
         gr.update(interactive=image_actions_interactive, variant="secondary"), # DOWNLOAD_IMAGE_BUTTON_UI
         gr.update(interactive=save_queue_interactive, variant=save_queue_variant),       # SAVE_QUEUE_BUTTON_UI
         gr.update(interactive=clear_pending_interactive, variant=clear_queue_variant),   # CLEAR_QUEUE_BUTTON_UI
+        gr.update(interactive=stop_processing_interactive),                              # STOP_PROCESSING_BUTTON_UI
     )

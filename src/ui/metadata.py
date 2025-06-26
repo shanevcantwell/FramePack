@@ -5,7 +5,7 @@ from PIL import Image
 from PIL.PngImagePlugin import PngInfo
 
 # Import shared state for access to parameter key lists
-from . import shared_state
+from . import shared_state as shared_state_module
 from .enums import ComponentKey as K
 from . import legacy_support
 
@@ -71,7 +71,7 @@ def open_and_check_metadata(temp_filepath: str):
         extracted_metadata = extract_metadata_from_pil_image(pil_image)
         # print(f"DEBUG (metadata.py): Extracted metadata: {extracted_metadata}") 
         prompt_preview = ""
-        if extracted_metadata and any(key in extracted_metadata for key in shared_state.CREATIVE_PARAM_KEYS):
+        if extracted_metadata and any(key in extracted_metadata for key in shared_state_module.CREATIVE_PARAM_KEYS):
             prompt_preview = extracted_metadata.get('prompt', '')
             # print(f"DEBUG (metadata.py): Metadata detected, prompt preview: '{prompt_preview}'") 
         # else:
@@ -88,7 +88,7 @@ def ui_load_params_from_image_metadata(extracted_metadata: dict) -> list:
     type conversions, and returns UI updates. This mirrors the logic from
     workspace.py to fix the UI not updating.
     """
-    param_to_ui_map = {v: k for k, v in shared_state.UI_TO_WORKER_PARAM_MAP.items()}
+    param_to_ui_map = {v: k for k, v in shared_state_module.UI_TO_WORKER_PARAM_MAP.items()}
     updates_dict = {}
     
     if extracted_metadata:
@@ -99,7 +99,7 @@ def ui_load_params_from_image_metadata(extracted_metadata: dict) -> list:
         for param_key, value in extracted_metadata.items():
             if param_key in param_to_ui_map:
                 ui_key = param_to_ui_map[param_key]
-                if ui_key in shared_state.CREATIVE_UI_KEYS:
+                if ui_key in shared_state_module.CREATIVE_UI_KEYS:
                     original_value = value
                     try:
                         # Sliders expecting integers
@@ -121,7 +121,7 @@ def ui_load_params_from_image_metadata(extracted_metadata: dict) -> list:
 
     # Construct the final list of updates in the correct order, sending an
     # update only for the components we found in the metadata.
-    final_updates = [updates_dict.get(key, gr.update()) for key in shared_state.CREATIVE_UI_KEYS]
+    final_updates = [updates_dict.get(key, gr.update()) for key in shared_state_module.CREATIVE_UI_KEYS]
     return final_updates
 
 def create_params_from_ui(ui_keys: list, ui_values: tuple) -> dict:
@@ -132,7 +132,7 @@ def create_params_from_ui(ui_keys: list, ui_values: tuple) -> dict:
     ui_dict = dict(zip(ui_keys, ui_values))
     params_dict = {}
     for ui_key, value in ui_dict.items():
-        worker_key = shared_state.UI_TO_WORKER_PARAM_MAP.get(ui_key)
+        worker_key = shared_state_module.UI_TO_WORKER_PARAM_MAP.get(ui_key)
         if worker_key:
             # This was the bug: it was converting the string "Roll-off" or "Linear" to a boolean.
             # Now it correctly stores the string value.
