@@ -84,8 +84,7 @@ def update_queue_df_display(queue_state):
             
         data.append([
             task_id, status_display, prompt_cell,
-            f"{params.get('total_second_length', 0):.1f}s",
-            params.get('steps', 0), img_md, "↑", "↓", "✖", "✎"
+            f"{params.get('total_second_length', 0):.1f}s", img_md, "↑", "↓", "✖", "✎"
         ])
         
     return gr.update(value=data)
