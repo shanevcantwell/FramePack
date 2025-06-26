@@ -31,15 +31,6 @@ def _wire_lora_events(components: dict):
 
 def _wire_workspace_events(components: dict):
     """Wires up the workspace save/load events."""
-    button_state_outputs = [
-        components[K.ADD_TASK_BUTTON],
-        components[K.PROCESS_QUEUE_BUTTON],
-        components[K.CREATE_PREVIEW_BUTTON],
-        components[K.CLEAR_IMAGE_BUTTON_UI],
-        components[K.DOWNLOAD_IMAGE_BUTTON_UI],
-        components[K.SAVE_QUEUE_BUTTON_UI],
-        components[K.CLEAR_QUEUE_BUTTON_UI],
-    ]
     full_workspace_ui_components = [components[key] for key in shared_state.ALL_TASK_UI_KEYS]
     (components[K.SAVE_WORKSPACE_BUTTON].click(
         fn=workspace_manager.save_workspace,
@@ -56,7 +47,7 @@ def _wire_workspace_events(components: dict):
     ).then(
         fn=event_handlers.update_button_states,
         inputs=[components[K.APP_STATE], components[K.INPUT_IMAGE_DISPLAY_UI], components[K.QUEUE_DF_DISPLAY_UI]],
-        outputs=button_state_outputs
+        outputs=[components[K.ADD_TASK_BUTTON], components[K.PROCESS_QUEUE_BUTTON]]
     ))
     components[K.SAVE_AS_DEFAULT_BUTTON].click(
         fn=workspace_manager.save_as_default_workspace,
@@ -66,15 +57,6 @@ def _wire_workspace_events(components: dict):
 
 def _wire_image_and_metadata_events(components: dict):
     """Wires up the main image input and metadata modal events."""
-    button_state_outputs = [
-        components[K.ADD_TASK_BUTTON],
-        components[K.PROCESS_QUEUE_BUTTON],
-        components[K.CREATE_PREVIEW_BUTTON],
-        components[K.CLEAR_IMAGE_BUTTON_UI],
-        components[K.DOWNLOAD_IMAGE_BUTTON_UI],
-        components[K.SAVE_QUEUE_BUTTON_UI],
-        components[K.CLEAR_QUEUE_BUTTON_UI],
-    ]
     creative_ui_components = [components[key] for key in shared_state.CREATIVE_UI_KEYS]
     
     clear_button_outputs = [
@@ -104,7 +86,7 @@ def _wire_image_and_metadata_events(components: dict):
     ).then(
         fn=event_handlers.update_button_states,
         inputs=[components[K.APP_STATE], components[K.INPUT_IMAGE_DISPLAY_UI], components[K.QUEUE_DF_DISPLAY_UI]],
-        outputs=button_state_outputs
+        outputs=[components[K.ADD_TASK_BUTTON], components[K.PROCESS_QUEUE_BUTTON]]
     ))
 
     (components[K.CLEAR_IMAGE_BUTTON_UI].click(
@@ -112,17 +94,14 @@ def _wire_image_and_metadata_events(components: dict):
     ).then(
         fn=event_handlers.update_button_states,
         inputs=[components[K.APP_STATE], components[K.INPUT_IMAGE_DISPLAY_UI], components[K.QUEUE_DF_DISPLAY_UI]],
-        outputs=button_state_outputs
+        outputs=[components[K.ADD_TASK_BUTTON], components[K.PROCESS_QUEUE_BUTTON]]
     ))
 
-    (components[K.DOWNLOAD_IMAGE_BUTTON_UI].click(
+    components[K.DOWNLOAD_IMAGE_BUTTON_UI].click(
         fn=event_handlers.prepare_image_for_download,
         inputs=([components[K.INPUT_IMAGE_DISPLAY_UI], components[K.APP_STATE], gr.State(shared_state.CREATIVE_UI_KEYS)] + creative_ui_components),
-        outputs=components[K.IMAGE_DOWNLOADER_UI], show_progress=True, api_name="download_image_with_metadata"
-    ).then(
-        fn=None, inputs=None, outputs=None,
-        js="() => { document.getElementById('image_downloader_hidden_file').querySelector('a[download]').click(); }"
-    ))
+        outputs=components[K.DOWNLOAD_IMAGE_BUTTON_UI], show_progress=True, api_name="download_image_with_metadata"
+    )
 
     components[K.MODAL_TRIGGER_BOX].change(fn=lambda x: gr.update(visible=True) if x else gr.update(visible=False), inputs=[components[K.MODAL_TRIGGER_BOX]], outputs=[components[K.METADATA_MODAL]], api_name=False, queue=False)
     (components[K.CONFIRM_METADATA_BTN].click(fn=metadata_manager.ui_load_params_from_image_metadata, inputs=[components[K.EXTRACTED_METADATA_STATE]], outputs=creative_ui_components).then(fn=lambda: None, inputs=None, outputs=[components[K.MODAL_TRIGGER_BOX]]))
@@ -130,15 +109,6 @@ def _wire_image_and_metadata_events(components: dict):
 
 def _wire_queue_events(components: dict):
     """Wires up all queue management events."""
-    button_state_outputs = [
-        components[K.ADD_TASK_BUTTON],
-        components[K.PROCESS_QUEUE_BUTTON],
-        components[K.CREATE_PREVIEW_BUTTON],
-        components[K.CLEAR_IMAGE_BUTTON_UI],
-        components[K.DOWNLOAD_IMAGE_BUTTON_UI],
-        components[K.SAVE_QUEUE_BUTTON_UI],
-        components[K.CLEAR_QUEUE_BUTTON_UI],
-    ]
     full_workspace_ui_components = [components[key] for key in shared_state.ALL_TASK_UI_KEYS]
     task_defining_ui_inputs = [components[K.INPUT_IMAGE_DISPLAY_UI]] + full_workspace_ui_components
     lora_ui_controls = [components[K.LORA_NAME_0], components[K.LORA_WEIGHT_0], components[K.LORA_TARGETS_0]]
@@ -151,32 +121,34 @@ def _wire_queue_events(components: dict):
     process_q_outputs = [
         components[K.APP_STATE], components[K.QUEUE_DF_DISPLAY_UI], components[K.LAST_FINISHED_VIDEO_UI],
         components[K.CURRENT_TASK_PREVIEW_IMAGE_UI], components[K.CURRENT_TASK_PROGRESS_DESC_UI],
-        components[K.CURRENT_TASK_PROGRESS_BAR_UI], components[K.PROCESS_QUEUE_BUTTON], components[K.CREATE_PREVIEW_BUTTON], components[K.CLEAR_QUEUE_BUTTON_UI]
+        components[K.CURRENT_TASK_PROGRESS_BAR_UI], components[K.PROCESS_QUEUE_BUTTON],
+        components[K.ABORT_TASK_BUTTON], components[K.CLEAR_QUEUE_BUTTON_UI]
     ]
     (components[K.ADD_TASK_BUTTON].click(
         fn=queue_manager.add_or_update_task_in_queue, inputs=[components[K.APP_STATE]] + task_defining_ui_inputs,
         outputs=[components[K.APP_STATE], components[K.QUEUE_DF_DISPLAY_UI], components[K.ADD_TASK_BUTTON], components[K.CANCEL_EDIT_TASK_BUTTON]]
     ).then(
         fn=event_handlers.update_button_states, inputs=[components[K.APP_STATE], components[K.INPUT_IMAGE_DISPLAY_UI], components[K.QUEUE_DF_DISPLAY_UI]],
-        outputs=button_state_outputs
+        outputs=[components[K.ADD_TASK_BUTTON], components[K.PROCESS_QUEUE_BUTTON]]
     ))
     (components[K.PROCESS_QUEUE_BUTTON].click(
         fn=queue_manager.process_task_queue_main_loop, inputs=[components[K.APP_STATE]] + lora_ui_controls, outputs=process_q_outputs
     ).then(
         fn=event_handlers.update_button_states, inputs=[components[K.APP_STATE], components[K.INPUT_IMAGE_DISPLAY_UI], components[K.QUEUE_DF_DISPLAY_UI]],
-        outputs=button_state_outputs
+        outputs=[components[K.ADD_TASK_BUTTON], components[K.PROCESS_QUEUE_BUTTON]]
     ))
-    (components[K.CREATE_PREVIEW_BUTTON].click(
-        fn=queue_manager.request_preview_generation_action, inputs=[components[K.APP_STATE]], outputs=[components[K.APP_STATE]]
+    components[K.CANCEL_EDIT_TASK_BUTTON].click(fn=queue_manager.cancel_edit_mode_action, inputs=[components[K.APP_STATE]], outputs=[components[K.APP_STATE], components[K.QUEUE_DF_DISPLAY_UI], components[K.ADD_TASK_BUTTON], components[K.CANCEL_EDIT_TASK_BUTTON]])
+    (components[K.ABORT_TASK_BUTTON].click(
+        fn=queue_manager.abort_current_task_processing_action, inputs=[components[K.APP_STATE]], outputs=[components[K.APP_STATE], components[K.ABORT_TASK_BUTTON]]
     ).then(
         fn=event_handlers.update_button_states, inputs=[components[K.APP_STATE], components[K.INPUT_IMAGE_DISPLAY_UI], components[K.QUEUE_DF_DISPLAY_UI]],
-        outputs=button_state_outputs
+        outputs=[components[K.ADD_TASK_BUTTON], components[K.PROCESS_QUEUE_BUTTON]]
     ))
     (components[K.CLEAR_QUEUE_BUTTON_UI].click(
         fn=queue_manager.clear_task_queue_action, inputs=[components[K.APP_STATE]], outputs=[components[K.APP_STATE], components[K.QUEUE_DF_DISPLAY_UI]]
     ).then(
         fn=event_handlers.update_button_states, inputs=[components[K.APP_STATE], components[K.INPUT_IMAGE_DISPLAY_UI], components[K.QUEUE_DF_DISPLAY_UI]],
-        outputs=button_state_outputs
+        outputs=[components[K.ADD_TASK_BUTTON], components[K.PROCESS_QUEUE_BUTTON]]
     ))
     components[K.SAVE_QUEUE_BUTTON_UI].click(fn=queue_manager.save_queue_to_zip, inputs=[components[K.APP_STATE]], outputs=[components[K.APP_STATE], components[K.SAVE_QUEUE_BUTTON_UI]], show_progress=True)
     components[K.LOAD_QUEUE_BUTTON_UI].upload(fn=queue_manager.load_queue_from_zip, inputs=[components[K.APP_STATE], components[K.LOAD_QUEUE_BUTTON_UI]], outputs=[components[K.APP_STATE], components[K.QUEUE_DF_DISPLAY_UI]])
@@ -184,7 +156,7 @@ def _wire_queue_events(components: dict):
         fn=queue_manager.handle_queue_action_on_select, inputs=[components[K.APP_STATE]] + task_defining_ui_inputs, outputs=select_q_outputs
     ).then(
         fn=event_handlers.update_button_states, inputs=[components[K.APP_STATE], components[K.INPUT_IMAGE_DISPLAY_UI], components[K.QUEUE_DF_DISPLAY_UI]],
-        outputs=button_state_outputs
+        outputs=[components[K.ADD_TASK_BUTTON], components[K.PROCESS_QUEUE_BUTTON]]
     ))
 
 def _wire_misc_control_events(components: dict):
@@ -223,48 +195,28 @@ def _wire_misc_control_events(components: dict):
 def _wire_app_startup_events(components: dict):
     """Wires events that run on application load."""
     block = components[K.BLOCK]
-    
-    # Define the outputs for each step in the startup chain
-    workspace_ui_outputs = [components[key] for key in shared_state.ALL_TASK_UI_KEYS]
-    image_ui_outputs = [
-        components[K.INPUT_IMAGE_DISPLAY_UI],
-        components[K.CLEAR_IMAGE_BUTTON_UI],
-        components[K.DOWNLOAD_IMAGE_BUTTON_UI],
-        components[K.IMAGE_FILE_INPUT_UI]
-    ]
-    button_state_outputs = [
-        components[K.ADD_TASK_BUTTON],
-        components[K.PROCESS_QUEUE_BUTTON],
-        components[K.CREATE_PREVIEW_BUTTON],
-        components[K.CLEAR_IMAGE_BUTTON_UI],
-        components[K.DOWNLOAD_IMAGE_BUTTON_UI],
-        components[K.SAVE_QUEUE_BUTTON_UI],
-        components[K.CLEAR_QUEUE_BUTTON_UI],
-    ]
 
-    # The .load event now uses a more robust, sequential chain of .then() calls.
-    # This was reverted from a single consolidated function to fix a Pydantic validation
-    # error that occurred when the UI state was not updated predictably.
-    # Step 1: Find the paths for the workspace and any refresh image.
-    settings_path, image_path = gr.State(), gr.State()
+    # Define the full list of outputs that our new consolidated function will update.
+    # The order must match the order of `final_updates` in the new function.
+    startup_outputs = (
+        [components[key] for key in shared_state.ALL_TASK_UI_KEYS] +
+        [components[K.INPUT_IMAGE_DISPLAY_UI], components[K.CLEAR_IMAGE_BUTTON_UI],
+         components[K.DOWNLOAD_IMAGE_BUTTON_UI], components[K.IMAGE_FILE_INPUT_UI]]
+    )
+
+    # A single, robust load event.
     (block.load(
-        fn=workspace_manager.load_workspace_on_start,
+        fn=workspace_manager.load_and_apply_startup_workspace,
         inputs=None,
-        outputs=[settings_path, image_path]
-    # Step 2: Load the workspace settings from the found path.
-    ).then(
-        fn=workspace_manager.load_settings_from_file,
-        inputs=[settings_path],
-        outputs=workspace_ui_outputs
-    # Step 3: Load the refresh image from its path.
-    ).then(
-        fn=workspace_manager.load_image_from_path,
-        inputs=[image_path],
-        outputs=image_ui_outputs
-    # Step 4: Update the calculated segments display based on loaded settings.
+        outputs=startup_outputs
+    # Chain subsequent UI logic that depends on the loaded state.
     ).then(
         fn=event_handlers.ui_update_total_segments,
-        inputs=[components[K.TOTAL_SECOND_LENGTH_UI], components[K.LATENT_WINDOW_SIZE_UI], components[K.FPS_UI]],
+        inputs=[
+            components[K.TOTAL_SECOND_LENGTH_UI],
+            components[K.LATENT_WINDOW_SIZE_UI],
+            components[K.FPS_UI]
+        ],
         outputs=[components[K.TOTAL_SEGMENTS_DISPLAY_UI]]
     ))
 
