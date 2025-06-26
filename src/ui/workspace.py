@@ -229,23 +229,25 @@ def load_workspace_on_start():
     return settings_file_path, image_path_to_load
 
 def load_image_from_path(image_path):
-    """Loads an image from a given path and returns an update for the Image component."""
+    """Loads an image from a given path and returns updates for the image and button components."""
+    pil_image = None
     if image_path and os.path.exists(image_path):
         try:
             pil_image = Image.open(image_path)
             # Clean up the temporary session-restore image after loading it.
             if REFRESH_IMAGE_FILENAME in os.path.basename(image_path) or tempfile.gettempdir() in os.path.abspath(image_path):
-                 try:
-                     os.remove(image_path)
-                 except OSError as e:
-                     print(f"Error deleting temporary refresh image '{image_path}': {e}")
-            return gr.update(value=pil_image, visible=True)
+                try:
+                    os.remove(image_path)
+                except OSError as e:
+                    print(f"Error deleting temporary refresh image '{image_path}': {e}")
         except Exception as e:
             print(f"Error loading refresh image from '{image_path}': {e}"); traceback.print_exc()
             gr.Warning(f"Could not restore image from previous session: {e}")
-            return gr.update(value=None, visible=False)
+            pil_image = None
 
-    return gr.update(value=None, visible=False)
+    has_image = pil_image is not None
+    return (gr.update(value=pil_image, visible=has_image), gr.update(interactive=has_image),
+            gr.update(interactive=has_image), gr.update(visible=not has_image))
 
 def load_and_apply_startup_workspace():
     """
@@ -289,16 +291,19 @@ def load_and_apply_startup_workspace():
         except Exception as e:
             print(f"Error loading refresh image from '{image_path_to_load}': {e}")
             gr.Warning(f"Could not restore image from previous session: {e}")
-
+    
+    has_image = pil_image is not None
+    
     # --- Part 4: Prepare all UI updates to be returned ---
     # Start with updates for the main workspace components
     final_updates = [gr.update(value=updates_map.get(key.value)) for key in shared_state.ALL_TASK_UI_KEYS]
     
     # Add updates for the image display and its associated buttons
-    final_updates.append(gr.update(value=pil_image, visible=pil_image is not None)) # INPUT_IMAGE_DISPLAY_UI
-    final_updates.append(gr.update(visible=pil_image is not None)) # CLEAR_IMAGE_BUTTON_UI
-    final_updates.append(gr.update(visible=pil_image is not None)) # DOWNLOAD_IMAGE_BUTTON_UI
-    final_updates.append(gr.update(visible=pil_image is None))   # IMAGE_FILE_INPUT_UI
+    final_updates.append(gr.update(value=pil_image, visible=has_image)) # INPUT_IMAGE_DISPLAY_UI
+    final_updates.append(gr.update(interactive=has_image)) # CLEAR_IMAGE_BUTTON_UI
+    final_updates.append(gr.update(interactive=has_image)) # DOWNLOAD_IMAGE_BUTTON_UI
+    final_updates.append(gr.update(visible=not has_image))   # IMAGE_FILE_INPUT_UI
+
 
     print("Consolidated startup: Finished loading. Returning UI updates.")
     return final_updates

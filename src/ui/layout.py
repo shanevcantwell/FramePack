@@ -1,4 +1,4 @@
-﻿# ui/layout.py
+# ui/layout.py
 # This file defines the Gradio UI layout for the goan application.
 
 import gradio as gr
@@ -69,13 +69,14 @@ def create_ui():
             with gr.Column(scale=1, min_width=300):
                 components[K.IMAGE_FILE_INPUT_UI] = gr.File(label="Drop Image Here or Click to Upload", file_types=["image"])
                 components[K.INPUT_IMAGE_DISPLAY_UI] = gr.Image(type="pil", label="Current Input Image", interactive=False, visible=False, height=220, show_download_button=False)
-                components[K.ADD_TASK_BUTTON] = gr.Button("Add to Queue", variant="secondary")
                 with gr.Row():
-                    components[K.CLEAR_IMAGE_BUTTON_UI] = gr.Button("Clear Image", variant="secondary", visible=False)
-                    components[K.DOWNLOAD_IMAGE_BUTTON_UI] = gr.DownloadButton("Download Image", variant="secondary", visible=False)
+                    components[K.ADD_TASK_BUTTON] = gr.Button("Add to Queue", variant="secondary")
+                    components[K.CANCEL_EDIT_TASK_BUTTON] = gr.Button("Cancel Edit", visible=False, variant="secondary")
+                with gr.Row():
+                    components[K.CLEAR_IMAGE_BUTTON_UI] = gr.Button("Clear Image", variant="secondary", interactive=False)
+                    components[K.DOWNLOAD_IMAGE_BUTTON_UI] = gr.DownloadButton("Download Image", variant="secondary", interactive=False)
                 components[K.PROCESS_QUEUE_BUTTON] = gr.Button("▶️ Process Queue", variant="primary")
                 components[K.ABORT_TASK_BUTTON] = gr.Button("⏹️ Abort", variant="stop", interactive=True)
-                components[K.CANCEL_EDIT_TASK_BUTTON] = gr.Button("Cancel Edit", visible=False, variant="secondary")
 
             with gr.Column(scale=2, min_width=600):
                 components[K.PROMPT_UI] = gr.Textbox(label="Prompt", lines=10)
