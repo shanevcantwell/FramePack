@@ -80,8 +80,8 @@ def load_settings_from_file(filepath, return_updates=True):
     final_settings = {**default_values, **loaded_settings}
     output_values = []
 
-    for key_enum in shared_state.ALL_TASK_UI_KEYS:
-        key = key_enum.value
+    # Iterate over the keys from the defaults map to ensure all settings are handled.
+    for key in default_values.keys():
         value = final_settings.get(key, default_values.get(key))
         try:
             if key in ['seed_ui', 'latent_window_size_ui', 'steps_ui', 'mp4_crf_ui', 'preview_frequency_ui', 'roll_off_start_ui', 'fps_ui']:
@@ -144,8 +144,8 @@ def save_as_default_workspace(*ui_values_tuple):
     """
     Saves the current UI settings as the default startup configuration.
     """
-    ui_keys_list = [key.value for key in shared_state.ALL_TASK_UI_KEYS]
-    settings_to_save = dict(zip(ui_keys_list, ui_values_tuple))
+    # Use the keys from the defaults map as the single source of truth.
+    settings_to_save = dict(zip(get_default_values_map().keys(), ui_values_tuple))
     save_settings_to_file(SETTINGS_FILENAME, settings_to_save)
     gr.Info(f"Default settings saved. Restart the application for changes to take effect.")
     return gr.update(visible=True), gr.update(visible=True)

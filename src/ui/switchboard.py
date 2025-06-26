@@ -40,7 +40,10 @@ def _wire_workspace_events(components: dict):
         components[K.SAVE_QUEUE_BUTTON_UI],
         components[K.CLEAR_QUEUE_BUTTON_UI],
     ]
-    full_workspace_ui_components = [components[key] for key in shared_state.ALL_TASK_UI_KEYS]
+    # Use the workspace's default map as the single source of truth for UI components.
+    # This ensures all settings, including FPS, are included.
+    default_keys_map = workspace_manager.get_default_values_map()
+    full_workspace_ui_components = [components[K[key.upper()]] for key in default_keys_map.keys()]
     (components[K.SAVE_WORKSPACE_BUTTON].click(
         fn=workspace_manager.save_workspace,
         inputs=full_workspace_ui_components,
@@ -138,9 +141,10 @@ def _wire_queue_events(components: dict):
         components[K.DOWNLOAD_IMAGE_BUTTON_UI],
         components[K.SAVE_QUEUE_BUTTON_UI],
         components[K.CLEAR_QUEUE_BUTTON_UI],
-        components[K.QUEUE_DOWNLOADER_UI] # Added for one-click download
     ]
-    full_workspace_ui_components = [components[key] for key in shared_state.ALL_TASK_UI_KEYS]
+    # Use the workspace's default map as the single source of truth for UI components.
+    default_keys_map = workspace_manager.get_default_values_map()
+    full_workspace_ui_components = [components[K[key.upper()]] for key in default_keys_map.keys()]
     task_defining_ui_inputs = [components[K.INPUT_IMAGE_DISPLAY_UI]] + full_workspace_ui_components
     lora_ui_controls = [components[K.LORA_NAME_0], components[K.LORA_WEIGHT_0], components[K.LORA_TARGETS_0]]
 

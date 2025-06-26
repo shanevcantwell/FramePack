@@ -29,6 +29,16 @@ def create_ui():
     .gr-button-primary { background-color: var(--color-accent-500) !important; color: white !important; }
     .gr-button-primary:hover { background-color: var(--color-accent-600) !important; }
 
+    /* Custom blue color for specific action buttons */
+    #clear_image_button:not([disabled]), #download_image_button:not([disabled]) {
+        background-color: #2563eb !important; /* A standard blue */
+        color: white !important;
+        border-color: #2563eb !important;
+    }
+    #clear_image_button:not([disabled]):hover, #download_image_button:not([disabled]):hover {
+        background-color: #1d4ed8 !important; /* A darker blue for hover */
+    }
+
     /* Highlight the Image Input Box on Load */
     #image_file_input_ui {
         background-color: var(--color-accent-800); /* A dark green fill */
@@ -83,11 +93,11 @@ def create_ui():
                     components[K.ADD_TASK_BUTTON] = gr.Button("Add to Queue", variant="secondary", interactive=False)
                     components[K.CANCEL_EDIT_TASK_BUTTON] = gr.Button("Cancel Edit", visible=False, variant="secondary")
                 with gr.Row():
-                    components[K.CLEAR_IMAGE_BUTTON_UI] = gr.Button("Clear Image", variant="secondary", interactive=False)
+                    components[K.CLEAR_IMAGE_BUTTON_UI] = gr.Button("Clear Image", variant="secondary", interactive=False, elem_id="clear_image_button")
                     # Changed from DownloadButton to Button to enable one-click download via JS.
-                    components[K.DOWNLOAD_IMAGE_BUTTON_UI] = gr.Button("Download Image", variant="secondary", interactive=False)
+                    components[K.DOWNLOAD_IMAGE_BUTTON_UI] = gr.Button("Download Image", variant="secondary", interactive=False, elem_id="download_image_button")
                 components[K.PROCESS_QUEUE_BUTTON] = gr.Button("▶️ Process Queue", variant="primary", interactive=False)
-                components[K.CREATE_PREVIEW_BUTTON] = gr.Button("📸 Create Preview", variant="secondary", interactive=False)
+                components[K.CREATE_PREVIEW_BUTTON] = gr.Button("📸 Create Preview", variant="secondary", interactive=False, elem_id="create_preview_button")
 
             with gr.Column(scale=2, min_width=600):
                 components[K.PROMPT_UI] = gr.Textbox(label="Prompt", lines=10)
@@ -117,7 +127,6 @@ def create_ui():
                     components[K.TOTAL_SEGMENTS_DISPLAY_UI] = gr.Markdown("Calculated Total Segments: N/A")
                     components[K.PREVIEW_FREQUENCY_UI] = gr.Slider(label="Preview Freq.", minimum=0, maximum=100, value=5, step=1)
                     components[K.SEGMENTS_TO_DECODE_CSV_UI] = gr.Textbox(label="Preview Segments CSV", value="")
-                    components[K.FPS_UI] = gr.Slider(label="MP4 Framerate (FPS)", minimum=1, maximum=60, value=30, step=1, visible=False)
                     with gr.Row():
                         components[K.GS_UI] = gr.Slider(label="Distilled CFG Start", minimum=1.0, maximum=32.0, value=10.0, step=0.01)
                         components[K.GS_SCHEDULE_SHAPE_UI] = gr.Radio(["Off", "Linear", "Roll-off"], label="Variable CFG", value="Off")
@@ -142,6 +151,7 @@ def create_ui():
                     components[K.USE_TEACACHE_UI] = gr.Checkbox(label='Use TeaCache', value=True)
                     components[K.USE_FP32_TRANSFORMER_OUTPUT_CHECKBOX_UI] = gr.Checkbox(label="Use FP32 Transformer Output", value=False)
                     components[K.GPU_MEMORY_PRESERVATION_UI] = gr.Slider(label="GPU Preserved (GB)", minimum=4, maximum=128, value=6.0, step=0.1)
+                    components[K.FPS_UI] = gr.Slider(label="MP4 Framerate (FPS)", minimum=1, maximum=60, value=30, step=1)
                     components[K.MP4_CRF_UI] = gr.Slider(label="MP4 CRF", minimum=0, maximum=51, value=18, step=1)
                     components[K.LATENT_WINDOW_SIZE_UI] = gr.Slider(label="Latent Window Size", minimum=1, maximum=33, value=9, step=1, visible=False)
                     components[K.OUTPUT_FOLDER_UI_CTRL] = gr.Textbox(label="Output Folder", value=workspace_manager.outputs_folder)

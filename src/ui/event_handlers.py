@@ -114,8 +114,6 @@ def update_button_states(app_state, input_image_pil, queue_df_data):
     # Add Task, Clear Image, Download Image Buttons: Active if an image is present and not processing.
     image_actions_interactive = has_image
     add_task_variant = "primary" if image_actions_interactive else "secondary"
-    # Use a different, non-primary variant for clear/download to break up the colors.
-    clear_download_variant = "secondary"
 
     # Process Queue Button: Acts as Start/Stop.
     process_queue_interactive = (queue_has_tasks and not is_processing) or is_processing
@@ -131,7 +129,8 @@ def update_button_states(app_state, input_image_pil, queue_df_data):
 
     # Create Preview Button: Active only during processing, disabled if a preview is scheduled.
     # (More granular control, e.g., first/last segment, is in the processing loop.)
-    create_preview_interactive = is_processing and not queue_state.get("preview_requested", False)
+    create_preview_interactive = is_processing and not queue_state.get("preview_requested", False) # This determines interactivity
+    create_preview_variant = "primary" if create_preview_interactive else "secondary" # This determines color (green if active, grey if disabled)
 
     # Save Queue Button: Active and green if there are tasks in the queue.
     save_queue_interactive = queue_has_tasks
@@ -144,9 +143,9 @@ def update_button_states(app_state, input_image_pil, queue_df_data):
     return (
         gr.update(interactive=image_actions_interactive, variant=add_task_variant),      # ADD_TASK_BUTTON
         gr.update(interactive=process_queue_interactive, variant=process_queue_variant, value=process_queue_value), # PROCESS_QUEUE_BUTTON
-        gr.update(interactive=create_preview_interactive),                               # CREATE_PREVIEW_BUTTON
-        gr.update(interactive=image_actions_interactive, variant=clear_download_variant), # CLEAR_IMAGE_BUTTON_UI
-        gr.update(interactive=image_actions_interactive, variant=clear_download_variant), # DOWNLOAD_IMAGE_BUTTON_UI
+        gr.update(interactive=create_preview_interactive, variant=create_preview_variant), # CREATE_PREVIEW_BUTTON
+        gr.update(interactive=image_actions_interactive, variant="secondary"), # CLEAR_IMAGE_BUTTON_UI
+        gr.update(interactive=image_actions_interactive, variant="secondary"), # DOWNLOAD_IMAGE_BUTTON_UI
         gr.update(interactive=save_queue_interactive, variant=save_queue_variant),       # SAVE_QUEUE_BUTTON_UI
         gr.update(interactive=clear_pending_interactive, variant=clear_queue_variant),   # CLEAR_QUEUE_BUTTON_UI
     )
