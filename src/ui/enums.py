@@ -23,13 +23,14 @@ class ComponentKey(StrEnum):
     CLEAR_IMAGE_BUTTON_UI = auto()
     DOWNLOAD_IMAGE_BUTTON_UI = auto()
     PROCESS_QUEUE_BUTTON = auto()
-    ABORT_TASK_BUTTON = auto()
+    CREATE_PREVIEW_BUTTON = auto()
     CANCEL_EDIT_TASK_BUTTON = auto()
     PROMPT_UI = auto()
     N_PROMPT_UI = auto()
     TOTAL_SECOND_LENGTH_UI = auto()
     SEED_UI = auto()
     IMAGE_DOWNLOADER_UI = auto()
+    QUEUE_DOWNLOADER_UI = auto()
 
     # --- Metadata Modal ---
     METADATA_MODAL = auto()

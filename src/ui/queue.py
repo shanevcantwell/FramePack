@@ -12,6 +12,7 @@ import tempfile
 import traceback
 import time
 import shutil
+import logging
 
 from . import lora as lora_manager
 from . import shared_state
@@ -19,6 +20,9 @@ from .enums import ComponentKey as K
 from core.generation_core import worker
 from diffusers_helper.thread_utils import AsyncStream, async_run
 from . import queue_helpers
+
+# Initialize logger for this module
+logger = logging.getLogger(__name__)
 
 AUTOSAVE_FILENAME = "goan_autosave_queue.zip"
 
@@ -30,9 +34,9 @@ def worker_wrapper(output_queue_ref, **kwargs):
     """
     try:
         worker(output_queue_ref=output_queue_ref, **kwargs)
-    except Exception:
+    except Exception as e:
         tb_str = traceback.format_exc()
-        print(f"--- BACKEND WORKER CRASHED ---\n{tb_str}\n--------------------------")
+        logger.error(f"--- BACKEND WORKER CRASHED ---\n{tb_str}\n--------------------------", exc_info=True)
         output_queue_ref.push(('crash', tb_str))
 
 
@@ -138,7 +142,7 @@ def request_preview_generation_action(state_dict_gr_state):
     # Set the preview_requested flag. The button state will be updated by the .then() call.
     queue_state['preview_requested'] = True
     shared_state.abort_state['level'] = 1
-    gr.Info("Preview requested. Will generate after current step, then continue queue.")
+    gr.Info("Preview requested. Will generate after the current segment completes, then continue queue.")
     
     return state_dict_gr_state
 
@@ -224,24 +228,24 @@ def load_queue_from_zip(state_dict_gr_state, zip_file_or_path):
 
 
 def autosave_queue_on_exit_action(state_dict_gr_state_ref):
-    print("Attempting to autosave queue on exit...")
+    logger.info("Attempting to autosave queue on exit...")
     queue_state = queue_helpers.get_queue_state(state_dict_gr_state_ref)
     if not queue_state.get("queue"):
         if os.path.exists(AUTOSAVE_FILENAME):
             try:
                 os.remove(AUTOSAVE_FILENAME)
-                print(f"Removed old autosave file: {AUTOSAVE_FILENAME}")
+                logger.info(f"Autosave: Removed old (now empty) autosave file: {AUTOSAVE_FILENAME}")
             except OSError as e:
-                print(f"Error deleting old autosave file: {e}")
+                logger.error(f"Autosave: Error deleting old autosave file: {e}")
         return
     try:
         _, temp_zip_path = save_queue_to_zip(state_dict_gr_state_ref)
         if temp_zip_path and os.path.exists(temp_zip_path):
             shutil.copy(temp_zip_path, AUTOSAVE_FILENAME)
             os.remove(temp_zip_path)
-            print(f"Autosave successful: Queue saved to {AUTOSAVE_FILENAME}")
+            logger.info(f"Autosave successful: Queue saved to {AUTOSAVE_FILENAME}")
     except Exception as e:
-        print(f"Error during autosave: {e}"); traceback.print_exc()
+        logger.error(f"Error during autosave: {e}", exc_info=True)
 
 def process_task_queue_main_loop(state_dict_gr_state, *lora_control_values): # noqa: C901
     """Main loop for processing tasks. It streams progress updates to the UI."""
@@ -250,7 +254,7 @@ def process_task_queue_main_loop(state_dict_gr_state, *lora_control_values): # n
     if queue_state.get("processing", False):
         gr.Info("Stop signal sent. Waiting for current step to finish...")
         shared_state.interrupt_flag.set()  # Signal a hard stop for the queue loop
-        shared_state.abort_state['level'] = 2  # Signal a hard stop for the worker
+        logger.info("Stop signal sent to worker. Interrupt Level: 2.")
         yield (
             state_dict_gr_state,
             queue_helpers.update_queue_df_display(queue_state),
@@ -285,14 +289,14 @@ def process_task_queue_main_loop(state_dict_gr_state, *lora_control_values): # n
     state_dict_gr_state["active_output_stream_queue"] = output_stream
 
     yield (
-        state_dict_gr_state,
+           state_dict_gr_state,
         queue_helpers.update_queue_df_display(queue_state),
         gr.update(),
         gr.update(visible=False),
         gr.update(value="Queue processing started..."),
         gr.update(value=""),
-        gr.update(interactive=True, value="⏹️ Stop Queue", variant="stop"),
-        gr.update(interactive=True),
+        gr.update(interactive=True, value="⏹️ Stop Processing", variant="stop"),
+        gr.update(interactive=False), # Always start disabled, enable on valid segments
         gr.update(interactive=False),
     )
 
@@ -321,8 +325,8 @@ def process_task_queue_main_loop(state_dict_gr_state, *lora_control_values): # n
                 gr.update(visible=True),
                 gr.update(value=f"Processing Task {current_task['id']}..."),
                 gr.update(value=""),
-                gr.update(interactive=True, value="⏹️ Stop Queue", variant="stop"),
-                gr.update(interactive=True),
+                gr.update(interactive=True, value="⏹️ Stop Processing", variant="stop"),
+                gr.update(interactive=False), # Always start disabled, enable on valid segments
                 gr.update(interactive=False),
             )
 
@@ -342,7 +346,25 @@ def process_task_queue_main_loop(state_dict_gr_state, *lora_control_values): # n
 
                 if flag == "progress":
                     task_id, preview_np, desc, html = data
-                    yield (state_dict_gr_state, gr.update(), gr.update(), gr.update(value=preview_np), desc, html, gr.update(), gr.update(), gr.update())
+
+                    # --- New logic to control Create Preview button ---
+                    create_preview_interactive = True
+                    # Disable if a preview was already requested
+                    if queue_state.get('preview_requested', False):
+                        create_preview_interactive = False
+                    else:
+                        # Try to parse segment info from description to disable on first/last segment
+                        if 'Segment' in desc:
+                            try:
+                                parts = desc.split('Segment ')[1].split('/')
+                                current_segment = int(parts[0])
+                                total_segments = int(parts[1].split(' ')[0])
+                                if total_segments > 1 and (current_segment == 1 or current_segment == total_segments):
+                                    create_preview_interactive = False
+                            except (ValueError, IndexError):
+                                pass # Failed to parse, leave button active as a fallback
+
+                    yield (state_dict_gr_state, gr.update(), gr.update(), gr.update(value=preview_np), desc, html, gr.update(), gr.update(interactive=create_preview_interactive), gr.update())
                 elif flag == "file":
                     task_id, new_video_path, _ = data
                     last_video_path_for_task = new_video_path
@@ -395,7 +417,7 @@ def process_task_queue_main_loop(state_dict_gr_state, *lora_control_values): # n
                 gr.update(visible=False),
                 gr.update(value=f"Task {current_task['id']} finished."),
                 gr.update(value=""),
-                gr.update(interactive=True, value="⏹️ Stop Queue", variant="stop"),
+                gr.update(interactive=True, value="⏹️ Stop Processing", variant="stop"),
                 gr.update(interactive=True),
                 gr.update(interactive=False),
             )
@@ -407,7 +429,7 @@ def process_task_queue_main_loop(state_dict_gr_state, *lora_control_values): # n
             shared_state.abort_state["level"] = 0
 
     finally:
-        print("Processing finished. Reverting all LoRAs to clean up.")
+        logger.info("Processing finished. Reverting all LoRAs to clean up.")
         lora_handler.revert_all_loras()
 
     queue_state["processing"] = False
@@ -422,7 +444,7 @@ def process_task_queue_main_loop(state_dict_gr_state, *lora_control_values): # n
         gr.update(visible=False),
         gr.update(value=final_status_message),
         gr.update(value=""),
-        gr.update(interactive=True, value="▶️ Start Queue", variant="primary"),
+        gr.update(interactive=True, value="▶️ Process Queue", variant="primary"),
         gr.update(interactive=False),
         gr.update(interactive=True),
     )

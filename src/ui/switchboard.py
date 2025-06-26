@@ -34,7 +34,7 @@ def _wire_workspace_events(components: dict):
     button_state_outputs = [
         components[K.ADD_TASK_BUTTON],
         components[K.PROCESS_QUEUE_BUTTON],
-        components[K.ABORT_TASK_BUTTON],
+        components[K.CREATE_PREVIEW_BUTTON],
         components[K.CLEAR_IMAGE_BUTTON_UI],
         components[K.DOWNLOAD_IMAGE_BUTTON_UI],
         components[K.SAVE_QUEUE_BUTTON_UI],
@@ -69,7 +69,7 @@ def _wire_image_and_metadata_events(components: dict):
     button_state_outputs = [
         components[K.ADD_TASK_BUTTON],
         components[K.PROCESS_QUEUE_BUTTON],
-        components[K.ABORT_TASK_BUTTON],
+        components[K.CREATE_PREVIEW_BUTTON],
         components[K.CLEAR_IMAGE_BUTTON_UI],
         components[K.DOWNLOAD_IMAGE_BUTTON_UI],
         components[K.SAVE_QUEUE_BUTTON_UI],
@@ -133,11 +133,12 @@ def _wire_queue_events(components: dict):
     button_state_outputs = [
         components[K.ADD_TASK_BUTTON],
         components[K.PROCESS_QUEUE_BUTTON],
-        components[K.ABORT_TASK_BUTTON],
+        components[K.CREATE_PREVIEW_BUTTON],
         components[K.CLEAR_IMAGE_BUTTON_UI],
         components[K.DOWNLOAD_IMAGE_BUTTON_UI],
         components[K.SAVE_QUEUE_BUTTON_UI],
         components[K.CLEAR_QUEUE_BUTTON_UI],
+        components[K.QUEUE_DOWNLOADER_UI] # Added for one-click download
     ]
     full_workspace_ui_components = [components[key] for key in shared_state.ALL_TASK_UI_KEYS]
     task_defining_ui_inputs = [components[K.INPUT_IMAGE_DISPLAY_UI]] + full_workspace_ui_components
@@ -151,7 +152,7 @@ def _wire_queue_events(components: dict):
     process_q_outputs = [
         components[K.APP_STATE], components[K.QUEUE_DF_DISPLAY_UI], components[K.LAST_FINISHED_VIDEO_UI],
         components[K.CURRENT_TASK_PREVIEW_IMAGE_UI], components[K.CURRENT_TASK_PROGRESS_DESC_UI],
-        components[K.CURRENT_TASK_PROGRESS_BAR_UI], components[K.PROCESS_QUEUE_BUTTON], components[K.ABORT_TASK_BUTTON], components[K.CLEAR_QUEUE_BUTTON_UI]
+        components[K.CURRENT_TASK_PROGRESS_BAR_UI], components[K.PROCESS_QUEUE_BUTTON], components[K.CREATE_PREVIEW_BUTTON], components[K.CLEAR_QUEUE_BUTTON_UI]
     ]
     (components[K.ADD_TASK_BUTTON].click(
         fn=queue_manager.add_or_update_task_in_queue, inputs=[components[K.APP_STATE]] + task_defining_ui_inputs,
@@ -166,7 +167,7 @@ def _wire_queue_events(components: dict):
         fn=event_handlers.update_button_states, inputs=[components[K.APP_STATE], components[K.INPUT_IMAGE_DISPLAY_UI], components[K.QUEUE_DF_DISPLAY_UI]],
         outputs=button_state_outputs
     ))
-    (components[K.ABORT_TASK_BUTTON].click(
+    (components[K.CREATE_PREVIEW_BUTTON].click(
         fn=queue_manager.request_preview_generation_action, inputs=[components[K.APP_STATE]], outputs=[components[K.APP_STATE]]
     ).then(
         fn=event_handlers.update_button_states, inputs=[components[K.APP_STATE], components[K.INPUT_IMAGE_DISPLAY_UI], components[K.QUEUE_DF_DISPLAY_UI]],
@@ -178,8 +179,22 @@ def _wire_queue_events(components: dict):
         fn=event_handlers.update_button_states, inputs=[components[K.APP_STATE], components[K.INPUT_IMAGE_DISPLAY_UI], components[K.QUEUE_DF_DISPLAY_UI]],
         outputs=button_state_outputs
     ))
-    components[K.SAVE_QUEUE_BUTTON_UI].click(fn=queue_manager.save_queue_to_zip, inputs=[components[K.APP_STATE]], outputs=[components[K.APP_STATE], components[K.SAVE_QUEUE_BUTTON_UI]], show_progress=True)
-    components[K.LOAD_QUEUE_BUTTON_UI].upload(fn=queue_manager.load_queue_from_zip, inputs=[components[K.APP_STATE], components[K.LOAD_QUEUE_BUTTON_UI]], outputs=[components[K.APP_STATE], components[K.QUEUE_DF_DISPLAY_UI]])
+    # Re-wired for one-click download. The button click prepares the file and outputs it
+    # to a hidden component, which is then "clicked" by the JS to trigger the download.
+    (components[K.SAVE_QUEUE_BUTTON_UI].click(
+        fn=queue_manager.save_queue_to_zip,
+        inputs=[components[K.APP_STATE]],
+        outputs=[components[K.APP_STATE], components[K.QUEUE_DOWNLOADER_UI]],
+        show_progress=True
+    ).then(
+        fn=None, inputs=None, outputs=None,
+        js="() => { document.getElementById('queue_downloader_hidden_file').querySelector('a[download]').click(); }"
+    ))
+    (components[K.LOAD_QUEUE_BUTTON_UI].upload(
+        fn=queue_manager.load_queue_from_zip, inputs=[components[K.APP_STATE], components[K.LOAD_QUEUE_BUTTON_UI]], outputs=[components[K.APP_STATE], components[K.QUEUE_DF_DISPLAY_UI]]
+    ).then(
+        fn=event_handlers.update_button_states, inputs=[components[K.APP_STATE], components[K.INPUT_IMAGE_DISPLAY_UI], components[K.QUEUE_DF_DISPLAY_UI]], outputs=button_state_outputs
+    ))
     (components[K.QUEUE_DF_DISPLAY_UI].select(
         fn=queue_manager.handle_queue_action_on_select, inputs=[components[K.APP_STATE]] + task_defining_ui_inputs, outputs=select_q_outputs
     ).then(
@@ -235,7 +250,7 @@ def _wire_app_startup_events(components: dict):
     button_state_outputs = [
         components[K.ADD_TASK_BUTTON],
         components[K.PROCESS_QUEUE_BUTTON],
-        components[K.ABORT_TASK_BUTTON],
+        components[K.CREATE_PREVIEW_BUTTON],
         components[K.CLEAR_IMAGE_BUTTON_UI],
         components[K.DOWNLOAD_IMAGE_BUTTON_UI],
         components[K.SAVE_QUEUE_BUTTON_UI],

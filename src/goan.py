@@ -5,6 +5,7 @@ import os
 import sys
 import atexit
 import gradio as gr
+import logging
 
 # Add project root and ui directory to sys.path for module discovery
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
@@ -21,6 +22,10 @@ from ui import (
     shared_state,
     switchboard
 )
+
+# Configure basic logging
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+logger = logging.getLogger(__name__)
 
 # Environment Setup & Model Loading
 os.environ['HF_HOME'] = os.path.abspath(os.path.realpath(os.path.join(os.path.dirname(__file__), './hf_download')))

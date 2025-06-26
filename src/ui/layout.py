@@ -29,6 +29,16 @@ def create_ui():
     .gr-button-primary { background-color: var(--color-accent-500) !important; color: white !important; }
     .gr-button-primary:hover { background-color: var(--color-accent-600) !important; }
 
+    /* Highlight the Image Input Box on Load */
+    #image_file_input_ui {
+        background-color: var(--color-accent-800); /* A dark green fill */
+        border-radius: 5px;
+        border: 2px dashed var(--color-accent-200); /* A light green dashed border */
+    }
+    #image_file_input_ui .text-gray-500 { /* This targets the default text color class */
+        color: var(--color-accent-100) !important;
+    }
+
     /* --- NEW, MORE ROBUST FIX for fullscreen images --- */
     /* This targets any image inside a fixed-position container, which is
        how Gradio implements the fullscreen view. Using a space instead of '>'
@@ -67,16 +77,17 @@ def create_ui():
 
         with gr.Row():
             with gr.Column(scale=1, min_width=300):
-                components[K.IMAGE_FILE_INPUT_UI] = gr.File(label="Drop Image Here or Click to Upload", file_types=["image"])
+                components[K.IMAGE_FILE_INPUT_UI] = gr.File(label="Drop Image Here or Click to Upload", file_types=["image"], elem_id="image_file_input_ui")
                 components[K.INPUT_IMAGE_DISPLAY_UI] = gr.Image(type="pil", label="Current Input Image", interactive=False, visible=False, height=220, show_download_button=False)
                 with gr.Row():
-                    components[K.ADD_TASK_BUTTON] = gr.Button("Add to Queue", variant="secondary")
+                    components[K.ADD_TASK_BUTTON] = gr.Button("Add to Queue", variant="secondary", interactive=False)
                     components[K.CANCEL_EDIT_TASK_BUTTON] = gr.Button("Cancel Edit", visible=False, variant="secondary")
                 with gr.Row():
                     components[K.CLEAR_IMAGE_BUTTON_UI] = gr.Button("Clear Image", variant="secondary", interactive=False)
-                    components[K.DOWNLOAD_IMAGE_BUTTON_UI] = gr.DownloadButton("Download Image", variant="secondary", interactive=False)
-                components[K.PROCESS_QUEUE_BUTTON] = gr.Button("▶️ Process Queue", variant="primary")
-                components[K.ABORT_TASK_BUTTON] = gr.Button("⏹️ Abort", variant="stop", interactive=True)
+                    # Changed from DownloadButton to Button to enable one-click download via JS.
+                    components[K.DOWNLOAD_IMAGE_BUTTON_UI] = gr.Button("Download Image", variant="secondary", interactive=False)
+                components[K.PROCESS_QUEUE_BUTTON] = gr.Button("▶️ Process Queue", variant="primary", interactive=False)
+                components[K.CREATE_PREVIEW_BUTTON] = gr.Button("📸 Create Preview", variant="secondary", interactive=False)
 
             with gr.Column(scale=2, min_width=600):
                 components[K.PROMPT_UI] = gr.Textbox(label="Prompt", lines=10)
@@ -87,13 +98,16 @@ def create_ui():
                     components[K.SEED_UI] = gr.Number(label="Seed", value=-1, precision=0, minimum=-1, maximum=2**32 - 1)
 
         with gr.Group():
-            components[K.IMAGE_DOWNLOADER_UI] = gr.File(visible=False)
+            # These hidden file components are the targets for one-click downloads.
+            components[K.IMAGE_DOWNLOADER_UI] = gr.File(visible=False, elem_id="image_downloader_hidden_file")
+            components[K.QUEUE_DOWNLOADER_UI] = gr.File(visible=False, elem_id="queue_downloader_hidden_file")
             gr.Markdown("## Task Queue")
             components[K.QUEUE_DF_DISPLAY_UI] = gr.DataFrame(headers=["ID", "Status", "Prompt", "Length", "Steps", "Input", "↑", "↓", "✖", "✎"], datatype=["number","markdown","markdown","str","number","markdown","markdown","markdown","markdown","markdown"], col_count=(10,"fixed"), interactive=False, elem_id="queue_df")
             with gr.Row():
-                components[K.SAVE_QUEUE_BUTTON_UI] = gr.DownloadButton("Save Queue", size="sm")
-                components[K.LOAD_QUEUE_BUTTON_UI] = gr.UploadButton("Load Queue", file_types=[".zip"], size="sm")
-                components[K.CLEAR_QUEUE_BUTTON_UI] = gr.Button("Clear Pending", size="sm", variant="stop")
+                # Changed from DownloadButton to Button to enable one-click download via JS.
+                components[K.SAVE_QUEUE_BUTTON_UI] = gr.Button("Save Queue", size="sm", interactive=False)
+                components[K.LOAD_QUEUE_BUTTON_UI] = gr.UploadButton("Load Queue", file_types=[".zip"], size="sm", variant="primary")
+                components[K.CLEAR_QUEUE_BUTTON_UI] = gr.Button("Clear Pending", size="sm", variant="stop", interactive=False)
 
         components[K.CURRENT_TASK_PREVIEW_IMAGE_UI] = gr.Image(label="Live Latent Preview", interactive=False, visible=False, show_download_button=False)
 
@@ -137,10 +151,13 @@ def create_ui():
                     components[K.RESET_UI_BUTTON] = gr.Button("Save & Refresh UI", variant="secondary")
 
                 with gr.Row():
-                    components[K.WORKSPACE_DOWNLOADER_UI] = gr.File(visible=False, file_count="single", elem_id="workspace_downloader_hidden_file")
-                    components[K.SAVE_WORKSPACE_BUTTON] = gr.Button("Save Workspace", variant="secondary")
-                    components[K.LOAD_WORKSPACE_BUTTON] = gr.UploadButton("Load Workspace", file_types=[".json"])
-                components[K.SHUTDOWN_BUTTON] = gr.Button("Save All & Exit", variant="stop")
+                    # These buttons are being hidden for now, pending future functionality.
+                    components[K.WORKSPACE_DOWNLOADER_UI] = gr.File(visible=False, file_count="single", elem_id="workspace_downloader_hidden_file",)
+                    components[K.SAVE_WORKSPACE_BUTTON] = gr.Button("Save Workspace", variant="secondary", visible=False)
+                    components[K.LOAD_WORKSPACE_BUTTON] = gr.UploadButton("Load Workspace", file_types=[".json"], visible=False)
+                # This button is being hidden for now, pending future functionality.
+                components[K.RESET_UI_BUTTON] = gr.Button("Save & Refresh UI", variant="secondary", visible=False)
+                components[K.SHUTDOWN_BUTTON] = gr.Button("Save All & Exit", variant="stop", visible=False)
 
             with gr.Column(scale=1):
                 gr.Markdown("## Live Preview & Output")
