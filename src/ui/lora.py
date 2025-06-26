@@ -66,26 +66,17 @@ def _convert_hunyuan_keys_to_framepack(lora_sd: dict[str, torch.Tensor], prefix:
 
         # --- Weight Splitting Logic ---
         if "QKVM" in new_key:
+            # split QKVM into Q, K, V, M
             key_q = new_key.replace("QKVM", "q")
             key_k = new_key.replace("QKVM", "k")
             key_v = new_key.replace("QKVM", "v")
             key_m = new_key.replace("attn_to_QKVM", "proj_mlp")
-
-            is_down_weight = "lora_down" in new_key or "lora_A" in new_key
-            is_up_weight = "lora_up" in new_key or "lora_B" in new_key
-
-            # Normalize to lora_down/up
-            key_q = key_q.replace("lora_A", "lora_down").replace("lora_B", "lora_up")
-            key_k = key_k.replace("lora_A", "lora_down").replace("lora_B", "lora_up")
-            key_v = key_v.replace("lora_A", "lora_down").replace("lora_B", "lora_up")
-            key_m = key_m.replace("lora_A", "lora_down").replace("lora_B", "lora_up")
-
-            if is_down_weight or "alpha" in new_key:
+            if "lora_down" in new_key or "alpha" in new_key:
                 new_lora_sd[key_q] = weight
                 new_lora_sd[key_k] = weight
                 new_lora_sd[key_v] = weight
                 new_lora_sd[key_m] = weight
-            elif is_up_weight:
+            elif "lora_up" in new_key:
                 # split QKVM weight into Q, K, V, M
                 new_lora_sd[key_q] = weight[:3072]
                 new_lora_sd[key_k] = weight[3072 : 3072 * 2]
@@ -94,23 +85,15 @@ def _convert_hunyuan_keys_to_framepack(lora_sd: dict[str, torch.Tensor], prefix:
             else:
                 logger.warning(f"Unsupported QKVM module name: {key}")
         elif "QKV" in new_key:
+            # split QKV into Q, K, V
             key_q = new_key.replace("QKV", "q")
             key_k = new_key.replace("QKV", "k")
             key_v = new_key.replace("QKV", "v")
-
-            is_down_weight = "lora_down" in new_key or "lora_A" in new_key
-            is_up_weight = "lora_up" in new_key or "lora_B" in new_key
-
-            # Normalize to lora_down/up
-            key_q = key_q.replace("lora_A", "lora_down").replace("lora_B", "lora_up")
-            key_k = key_k.replace("lora_A", "lora_down").replace("lora_B", "lora_up")
-            key_v = key_v.replace("lora_A", "lora_down").replace("lora_B", "lora_up")
-
-            if is_down_weight or "alpha" in new_key:
+            if "lora_down" in new_key or "alpha" in new_key:
                 new_lora_sd[key_q] = weight
                 new_lora_sd[key_k] = weight
                 new_lora_sd[key_v] = weight
-            elif is_up_weight:
+            elif "lora_up" in new_key:
                 # split QKV weight into Q, K, V
                 new_lora_sd[key_q] = weight[:3072]
                 new_lora_sd[key_k] = weight[3072 : 3072 * 2]
@@ -119,8 +102,7 @@ def _convert_hunyuan_keys_to_framepack(lora_sd: dict[str, torch.Tensor], prefix:
                 logger.warning(f"Unsupported QKV module name: {key}")
         else:
             # no split needed
-            final_key = new_key.replace("lora_A", "lora_down").replace("lora_B", "lora_up")
-            new_lora_sd[final_key] = weight
+            new_lora_sd[new_key] = weight
 
     return new_lora_sd
 
