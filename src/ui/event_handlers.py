@@ -116,16 +116,20 @@ def update_button_states(app_state, input_image_pil, queue_df_data):
     # Add Task, Clear Image, Download Image Buttons: Active if an image is present and not processing.
     image_actions_interactive = has_image
     add_task_variant = "primary" if image_actions_interactive else "secondary"
-
-    # Process Queue Button: Active only if there are tasks and we are NOT processing.
-    process_queue_interactive = queue_has_tasks and not is_processing
-    process_queue_variant = "primary" if process_queue_interactive else "secondary"
-
-    # Stop Processing Button: Active only when processing is underway.
-    stop_processing_interactive = is_processing
+    
+    # Process Queue Button (overloaded Start/Stop)
+    if is_processing:
+        process_queue_text = "⏹️ Stop Processing"
+        process_queue_variant = "stop"
+        process_queue_interactive = True # Always interactive to stop if processing
+    else:
+        process_queue_text = "▶️ Process Queue"
+        process_queue_variant = "primary"
+        process_queue_interactive = queue_has_tasks # Interactive to start only if tasks exist
 
     # Create Preview Button: Active only during processing, disabled if a preview is scheduled.
     # This now correctly checks the shared flag that the worker uses.
+    # Note: This button should only be interactive if the queue is processing.
     create_preview_interactive = is_processing and not shared_state_module.shared_state_instance.preview_request_flag.is_set()
     create_preview_variant = "primary" if create_preview_interactive else "secondary" # This determines color (green if active, grey if disabled)
 
@@ -133,17 +137,16 @@ def update_button_states(app_state, input_image_pil, queue_df_data):
     save_queue_interactive = queue_has_tasks
     save_queue_variant = "primary" if save_queue_interactive else "secondary"
 
-    # Clear Pending Button: Active if there are pending tasks and not processing.
+    # Clear Pending Button: Active if there are any pending tasks, even during processing.
     clear_pending_interactive = has_pending_tasks
     clear_queue_variant = "stop" if clear_pending_interactive else "secondary"
 
     return (
-        gr.update(interactive=image_actions_interactive, variant=add_task_variant),      # ADD_TASK_BUTTON
-        gr.update(interactive=process_queue_interactive, variant=process_queue_variant), # PROCESS_QUEUE_BUTTON
+        gr.update(interactive=image_actions_interactive, variant=add_task_variant),       # ADD_TASK_BUTTON
+        gr.update(interactive=process_queue_interactive, value=process_queue_text, variant=process_queue_variant), # PROCESS_QUEUE_BUTTON
         gr.update(interactive=create_preview_interactive, variant=create_preview_variant), # CREATE_PREVIEW_BUTTON
-        gr.update(interactive=image_actions_interactive, variant="secondary"), # CLEAR_IMAGE_BUTTON_UI
-        gr.update(interactive=image_actions_interactive, variant="secondary"), # DOWNLOAD_IMAGE_BUTTON_UI
-        gr.update(interactive=save_queue_interactive, variant=save_queue_variant),       # SAVE_QUEUE_BUTTON_UI
-        gr.update(interactive=clear_pending_interactive, variant=clear_queue_variant),   # CLEAR_QUEUE_BUTTON_UI
-        gr.update(interactive=stop_processing_interactive),                              # STOP_PROCESSING_BUTTON_UI
+        gr.update(interactive=image_actions_interactive, variant="secondary"),             # CLEAR_IMAGE_BUTTON_UI
+        gr.update(interactive=image_actions_interactive, variant="secondary"),             # DOWNLOAD_IMAGE_BUTTON_UI
+        gr.update(interactive=save_queue_interactive, variant=save_queue_variant),         # SAVE_QUEUE_BUTTON_UI
+        gr.update(interactive=clear_pending_interactive, variant=clear_queue_variant),     # CLEAR_QUEUE_BUTTON_UI
     )

@@ -39,7 +39,6 @@ def _wire_workspace_events(components: dict):
         components[K.DOWNLOAD_IMAGE_BUTTON_UI],
         components[K.SAVE_QUEUE_BUTTON_UI],
         components[K.CLEAR_QUEUE_BUTTON_UI],
-        components[K.STOP_PROCESSING_BUTTON_UI],
     ]
     # Use the workspace's default map as the single source of truth for UI components.
     # This ensures all settings, including FPS, are included.
@@ -78,7 +77,6 @@ def _wire_image_and_metadata_events(components: dict):
         components[K.DOWNLOAD_IMAGE_BUTTON_UI],
         components[K.SAVE_QUEUE_BUTTON_UI],
         components[K.CLEAR_QUEUE_BUTTON_UI],
-        components[K.STOP_PROCESSING_BUTTON_UI],
     ]
     creative_ui_components = [components[key] for key in shared_state_module.CREATIVE_UI_KEYS]
    
@@ -144,7 +142,6 @@ def _wire_queue_events(components: dict):
         components[K.DOWNLOAD_IMAGE_BUTTON_UI],
         components[K.SAVE_QUEUE_BUTTON_UI],
         components[K.CLEAR_QUEUE_BUTTON_UI],
-        components[K.STOP_PROCESSING_BUTTON_UI],
     ]
     # Use the workspace's default map as the single source of truth for UI components.
     default_keys_map = workspace_manager.get_default_values_map()
@@ -170,12 +167,6 @@ def _wire_queue_events(components: dict):
         outputs=button_state_outputs
     ))
     (components[K.PROCESS_QUEUE_BUTTON].click(
-        fn=queue_manager.process_task_queue_main_loop, inputs=[components[K.APP_STATE]] + lora_ui_controls, outputs=process_q_outputs
-    ).then(
-        fn=event_handlers.update_button_states, inputs=[components[K.APP_STATE], components[K.INPUT_IMAGE_DISPLAY_UI], components[K.QUEUE_DF_DISPLAY_UI]],
-        outputs=button_state_outputs
-    ))
-    (components[K.STOP_PROCESSING_BUTTON_UI].click(
         fn=queue_manager.process_task_queue_main_loop, inputs=[components[K.APP_STATE]] + lora_ui_controls, outputs=process_q_outputs
     ).then(
         fn=event_handlers.update_button_states, inputs=[components[K.APP_STATE], components[K.INPUT_IMAGE_DISPLAY_UI], components[K.QUEUE_DF_DISPLAY_UI]],
@@ -269,7 +260,6 @@ def _wire_app_startup_events(components: dict):
         components[K.DOWNLOAD_IMAGE_BUTTON_UI],
         components[K.SAVE_QUEUE_BUTTON_UI],
         components[K.CLEAR_QUEUE_BUTTON_UI],
-        components[K.STOP_PROCESSING_BUTTON_UI],
     ]
 
     # The .load event now uses a more robust, sequential chain of .then() calls.

@@ -265,7 +265,7 @@ def process_task_queue_main_loop(state_dict_gr_state, *lora_control_values): # n
             gr.update(),  # LAST_FINISHED_VIDEO_UI
             gr.update(),  # CURRENT_TASK_PREVIEW_IMAGE_UI
             gr.update(),  # CURRENT_TASK_PROGRESS_DESC_UI
-            gr.update(),  # CURRENT_TASK_PROGRESS_BAR_UI
+            gr.update(), # CURRENT_TASK_PROGRESS_BAR_UI
             gr.update(interactive=False, value="Stopping...", variant="stop"),  # PROCESS_QUEUE_BUTTON
             gr.update(interactive=False),  # CREATE_PREVIEW_BUTTON
             gr.update(interactive=False),  # CLEAR_QUEUE_BUTTON_UI (disable while stopping)
@@ -284,13 +284,15 @@ def process_task_queue_main_loop(state_dict_gr_state, *lora_control_values): # n
             gr.update(), gr.update(), gr.update(), gr.update(),
             gr.update(interactive=False, value="Queue Empty", variant="secondary"),
             gr.update(interactive=False),
-            gr.update(interactive=True),
+            gr.update(interactive=True), # CLEAR_QUEUE_BUTTON_UI
         )
         return
 
     queue_state["processing"] = True
     output_stream = AsyncStream()
     state_dict_gr_state["active_output_stream_queue"] = output_stream
+
+    has_pending_tasks_at_start = any(task.get("status", "pending") == "pending" for task in queue_state["queue"])
 
     yield (
            state_dict_gr_state,
@@ -299,9 +301,9 @@ def process_task_queue_main_loop(state_dict_gr_state, *lora_control_values): # n
         gr.update(visible=False),
         gr.update(value="Queue processing started..."),
         gr.update(value=""),
-        gr.update(interactive=True, value="⏹️ Stop Processing", variant="stop"),
+        gr.update(interactive=True, value="⏹️ Stop Processing", variant="stop"), # PROCESS_QUEUE_BUTTON
         gr.update(interactive=False), # Always start disabled, enable on valid segments
-        gr.update(interactive=False),
+        gr.update(interactive=has_pending_tasks_at_start),
     )
 
     lora_handler = lora_manager.LoRAManager()
@@ -319,6 +321,9 @@ def process_task_queue_main_loop(state_dict_gr_state, *lora_control_values): # n
 
             current_task["status"] = "processing"
 
+            # Check for pending tasks *excluding* the one that is now processing.
+            has_pending_tasks_during_run = any(task.get("status", "pending") == "pending" for task in queue_state["queue"][1:])
+
             yield (
                 state_dict_gr_state,
                 queue_helpers.update_queue_df_display(queue_state),
@@ -326,9 +331,9 @@ def process_task_queue_main_loop(state_dict_gr_state, *lora_control_values): # n
                 gr.update(visible=True),
                 gr.update(value=f"Processing Task {current_task['id']}..."),
                 gr.update(value=""),
-                gr.update(interactive=True, value="⏹️ Stop Processing", variant="stop"),
+                gr.update(interactive=True, value="⏹️ Stop Processing", variant="stop"), # PROCESS_QUEUE_BUTTON
                 gr.update(interactive=False), # Always start disabled, enable on valid segments
-                gr.update(interactive=False),
+                gr.update(interactive=has_pending_tasks_during_run),
             )
 
             worker_args = {**current_task["params"], "task_id": current_task["id"], **shared_state_module.shared_state_instance.models}
@@ -381,6 +386,9 @@ def process_task_queue_main_loop(state_dict_gr_state, *lora_control_values): # n
             elif last_video_path_for_task:
                 final_video_for_display = last_video_path_for_task
 
+            # After a task is done, re-check for any remaining pending tasks.
+            has_pending_tasks_after_task = any(task.get("status", "pending") == "pending" for task in queue_state["queue"])
+
             yield (
                 state_dict_gr_state,
                 queue_helpers.update_queue_df_display(queue_state),
@@ -388,9 +396,9 @@ def process_task_queue_main_loop(state_dict_gr_state, *lora_control_values): # n
                 gr.update(visible=False),
                 gr.update(value=f"Task {current_task['id']} finished."),
                 gr.update(value=""),
-                gr.update(interactive=True, value="⏹️ Stop Processing", variant="stop"),
+                gr.update(interactive=True, value="⏹️ Stop Processing", variant="stop"), # PROCESS_QUEUE_BUTTON (still processing if queue not empty)
                 gr.update(interactive=True),
-                gr.update(interactive=False),
+                gr.update(interactive=has_pending_tasks_after_task),
             )
 
             if shared_state_module.shared_state_instance.interrupt_flag.is_set():
@@ -407,6 +415,7 @@ def process_task_queue_main_loop(state_dict_gr_state, *lora_control_values): # n
     state_dict_gr_state["active_output_stream_queue"] = None
     final_status_message = "All tasks processed." if not shared_state_module.shared_state_instance.interrupt_flag.is_set() else "Queue processing stopped."
     final_video_to_show = state_dict_gr_state.get("last_completed_video_path") # This line was missing
+    queue_has_tasks_at_end = bool(queue_state["queue"])
 
     yield (
         state_dict_gr_state,
@@ -415,7 +424,7 @@ def process_task_queue_main_loop(state_dict_gr_state, *lora_control_values): # n
         gr.update(visible=False),
         gr.update(value=final_status_message),
         gr.update(value=""),
-        gr.update(interactive=True, value="▶️ Process Queue", variant="primary"),
+        gr.update(interactive=queue_has_tasks_at_end, value="▶️ Process Queue", variant="primary"),
         gr.update(interactive=False),
-        gr.update(interactive=True),
+        gr.update(interactive=queue_has_tasks_at_end),
     )
