@@ -128,6 +128,16 @@ Once the installation is complete, you can launch the application using the gene
 ```
 
 The UI will open automatically in your web browser.
+![goan_ui_advanced_settings](https://github.com/user-attachments/assets/782f4124-60fc-46ca-90f3-7107ef9dbf66)
+![goan_ui_debug_settings](https://github.com/user-attachments/assets/43f27ff4-3ec6-49c5-b0d2-456e66497a03)
+
+Lora support is also implemented, but wild LoRAs are proving to have surprising inconsistencies, and I'm not yet convinced they affect the video generation at all.
+
+---
+### Sneak Peek at Advanced and Debug Controls
+[Note: these will change as their effectiveness in FramePack I2v is tested and gauged.]
+
+
 
 ---
 
