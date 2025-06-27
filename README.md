@@ -1,4 +1,5 @@
 # **goan: A Power-User UI for FramePack**
+![goan_ui_running_collapsed_including_mp4_preview](https://github.com/user-attachments/assets/ba7cbe9e-2684-4f00-80fe-82907467eaff)
 
 [!IMPORTANT]
 An absolute must-read before even touching `goan` is the official FramePack documentation, as it contains  beautiful examples that FramePack is capable of from just the most basic controls exposed in the engine's repo: lllyasviel/FramePack
@@ -30,31 +31,46 @@ This guide will walk you through your first video generation with `goan`. For in
 The interface is organized into a few key areas to streamline your workflow. [images coming soon]
 
 *   **Left Panel:** This is your starting point. Drop your input image here, add it to the queue, and start or stop the generation process.
-*   **Right Panel:** This is where you get creative. Write your `Prompt` and `Negative Prompt`, and adjust core settings like `Video Length` and `Seed`.
-*   **Bottom Area:** This section contains the `Task Queue` where you can see all your pending and completed jobs, and the `Live Preview & Output` where you'll see your video come to life.
+*   
+![goan_ui_startup_primary_controls_left_side_all_active](https://github.com/user-attachments/assets/acdfb830-4aa4-40bc-8682-edd00c6773ee)
 
-![goan_ui_running_expanded](https://github.com/user-attachments/assets/764e2dd2-f124-4f03-a65a-eff1adabd175)
-(image not fully representational of the most current posted revision)
+*   **Right Panel:** This is where you get creative. Write your `Prompt` and `Negative Prompt`, and adjust core settings like `Video Length` and `Seed`.
+
+![goan_ui_startup_primary_controls_right_side_empty](https://github.com/user-attachments/assets/7bf7f22f-ecba-4c1c-9e22-1b632e154163)
+
+*   **Task Queue:**
+
+![goan_ui_task_queue](https://github.com/user-attachments/assets/15bee305-3d7e-4708-bdb0-1e421e81c10a)
+
+*   **"Below the Fold":** Below the `Task Queue` you can see all accordion menus of more advanced controls. The `Live Preview & Output` contains 2 detailed indicators of task progress, as well as a video player updated with your latest preview video to see your video come to life.
+
+![goan_ui_collapsed_below the fold](https://github.com/user-attachments/assets/b4e5cb6f-b129-44d2-8e8f-a1cd1b22af00)
+
+(The UI is still undergoing evolution so these images may not be fully representational of the UI currently available.)
 
 ### 2. Your First Generation
 
-Let's create a video in four simple steps.
+Create a video in four simple steps.
 
 **Step 1: Add an Input Image**
-Drag and drop a starting image into the green box upper left. A thumbnail will replace the green field and the buttons make it clear what you're able to do at any given combination of internal states. 
+Drag and drop a starting image, particularly one that already captures or strongly implies motion, into the green box in the upper left of the interface. A thumbnail will replace the green field and the buttons will help guide what steps are next. 
 
-*[Image: A screenshot showing an image being dropped into the file input area, and the resulting preview.]*
+![goan_ui_startup_primary_controls_left_side_empty](https://github.com/user-attachments/assets/a763af56-45bd-4bd9-8200-18fc5c5cabe5)
 
 **Step 2: Write a Prompt**
 In the "Prompt" text box on the right, describe the video you want to create. For example: "A majestic dragon flying over a futuristic city at sunset, cinematic, highly detailed."
 
-**Step 3: Add to Queue**
-Click the **"Add to Queue"** button. You'll see your task appear in the `Task Queue` at the bottom.
+![goan_ui_creative_settings_populated](https://github.com/user-attachments/assets/cf28efed-dd21-4aea-b6b5-a36564d6b240)
 
-*[Image: A screenshot of the Task Queue showing one pending task.]*
+**Step 3: Add to Queue**
+Click the **"Add Task to Queue"** button. You'll see your task appear in the `Task Queue` list spanning the center of the interface.
+
+![goan_ui_task_queue](https://github.com/user-attachments/assets/1448c243-6406-405e-98f4-900c7e2208fe)
 
 **Step 4: Process the Queue**
 Click the green **"▶️ Process Queue"** button. The task status will change to "Processing", and you'll see a live preview of the generation on the right. This button will change to "⏹️ Stop Processing" while a task is running, allowing you to gracefully halt the process.
+
+![goan_ui_process_queue_button_active](https://github.com/user-attachments/assets/ba75710e-e35b-4db9-ab1d-8c299773cada)
 
 Once it's done, the final video will appear in the "Live Preview & Output" player. Congratulations, you've made your first video!
 
@@ -62,10 +78,17 @@ Once it's done, the final video will appear in the "Live Preview & Output" playe
 
 `goan` makes it easy to save and reuse your settings, whether you prefer visual cues or structured data.
 
-*   **Saving:** After a generation, click the **"Download Image"** button. This saves the input image as a PNG file that contains all of your prompt and slider settings embedded as metadata.
-*   **Reusing:** Simply drag and drop that saved PNG back into `goan`. A dialog will pop up asking if you want to apply the settings from that image. This is a powerful way to save, share, and iterate on your creative ideas.
+*   **Editing:** Any queued task not currently processing can be edited both of its place in the queue and its complete set of generation settings.
+  
+  ![goan_ui_editing_task](https://github.com/user-attachments/assets/78e84c78-b2b2-4c1d-ba04-fcdc99c8b8cb)
 
-*[Image: A screenshot of the metadata modal dialog asking to apply settings from a dropped image.]*
+*   **Saving:** After a generation, click the **"Download Image"** button. This saves the input image as a PNG file that contains all of your prompt and slider settings embedded as metadata.
+
+  ![goan_ui_download_with_metadata_button_active](https://github.com/user-attachments/assets/35f55dff-b124-42c1-b9ad-b9f84d4c0ab2)
+
+*   **Reusing:** Simply drag and drop that saved PNG back into `goan`. A dialog will pop up asking if you want to apply the settings from that image. This should be familiar behavior for users of other image diffusion software like ComfyUI, to share and to iterate on your creative ideas through visual categorization.
+
+  ![goan_ui_dropped_in_image_overwrite_confirmation](https://github.com/user-attachments/assets/16d049ea-24c7-403e-b7ff-c9d8a62aec71)
 
 ---
 
