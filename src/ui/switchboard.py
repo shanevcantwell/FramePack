@@ -163,17 +163,17 @@ def _wire_queue_events(components: dict):
     lora_ui_controls = [components[K.LORA_NAME_0], components[K.LORA_WEIGHT_0], components[K.LORA_TARGETS_0]]
 
     select_q_outputs = (
-        [components[k] for k in [K.APP_STATE, K.QUEUE_DF_DISPLAY_UI, K.INPUT_IMAGE_DISPLAY_UI]] +
+        [components[k] for k in [K.APP_STATE, K.QUEUE_DF_DISPLAY_UI, K.INPUT_IMAGE_DISPLAY_UI, K.IMAGE_FILE_INPUT_UI]] +
         full_workspace_ui_components +
         [components[k] for k in [K.CLEAR_IMAGE_BUTTON_UI, K.DOWNLOAD_IMAGE_BUTTON_UI, K.ADD_TASK_BUTTON, K.CANCEL_EDIT_TASK_BUTTON]]
     )
     add_task_outputs = (
-        [components[k] for k in [K.APP_STATE, K.QUEUE_DF_DISPLAY_UI, K.INPUT_IMAGE_DISPLAY_UI]] +
+        [components[k] for k in [K.APP_STATE, K.QUEUE_DF_DISPLAY_UI, K.INPUT_IMAGE_DISPLAY_UI, K.IMAGE_FILE_INPUT_UI]] +
         full_workspace_ui_components +
         [components[k] for k in [K.CLEAR_IMAGE_BUTTON_UI, K.DOWNLOAD_IMAGE_BUTTON_UI, K.ADD_TASK_BUTTON, K.CANCEL_EDIT_TASK_BUTTON]]
     )
     cancel_edit_outputs = (
-        [components[k] for k in [K.APP_STATE, K.QUEUE_DF_DISPLAY_UI, K.INPUT_IMAGE_DISPLAY_UI]] +
+        [components[k] for k in [K.APP_STATE, K.QUEUE_DF_DISPLAY_UI, K.INPUT_IMAGE_DISPLAY_UI, K.IMAGE_FILE_INPUT_UI]] +
         full_workspace_ui_components +
         [components[k] for k in [K.CLEAR_IMAGE_BUTTON_UI, K.DOWNLOAD_IMAGE_BUTTON_UI, K.ADD_TASK_BUTTON, K.CANCEL_EDIT_TASK_BUTTON]]
     )

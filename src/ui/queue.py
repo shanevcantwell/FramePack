@@ -1,4 +1,4 @@
-﻿# ui/queue.py
+﻿﻿# ui/queue.py
 # Handles all user-facing queue management logic and event handling for the UI.
 
 import gradio as gr
@@ -51,13 +51,15 @@ def add_or_update_task_in_queue(state_dict_gr_state, *args_from_ui_controls_tupl
         # Reset UI to default state.
         default_values_map = workspace_manager.get_default_values_map()
         ui_updates_to_reset = [gr.update(value=default_values_map.get(key)) for key in shared_state_module.ALL_TASK_UI_KEYS]
-        img_update_to_reset = gr.update(value=None, visible=False)
+        img_display_update_to_reset = gr.update(value=None, visible=False)
+        file_input_update_to_reset = gr.update(visible=True, value=None)
         clear_image_button_update_to_reset = gr.update(interactive=False, variant="secondary")
         download_image_button_update_to_reset = gr.update(interactive=False, variant="secondary")
         add_task_button_update_to_reset = gr.update(value="Add Task to Queue" if editing_task_id is None else "Update Task", variant="secondary")
         cancel_edit_button_update_to_reset = gr.update(visible=editing_task_id is not None)
         return (state_dict_gr_state, queue_helpers.update_queue_df_display(queue_state),
-                img_update_to_reset, *ui_updates_to_reset,
+                img_display_update_to_reset, file_input_update_to_reset,
+                *ui_updates_to_reset,
                 clear_image_button_update_to_reset, download_image_button_update_to_reset,
                 add_task_button_update_to_reset, cancel_edit_button_update_to_reset)
     
@@ -75,7 +77,8 @@ def add_or_update_task_in_queue(state_dict_gr_state, *args_from_ui_controls_tupl
         # Prepare updates for all UI controls to reset them to defaults after adding/updating
         default_values_map = workspace_manager.get_default_values_map()
         ui_updates_to_reset = [gr.update(value=default_values_map.get(key)) for key in shared_state_module.ALL_TASK_UI_KEYS]
-        img_update_to_reset = gr.update(value=None, visible=False)
+        img_display_update_to_reset = gr.update(value=None, visible=False)
+        file_input_update_to_reset = gr.update(visible=True, value=None)
         clear_image_button_update_to_reset = gr.update(interactive=False, variant="secondary")
         download_image_button_update_to_reset = gr.update(interactive=False, variant="secondary")
         add_task_button_update_to_reset = gr.update(value="Add Task to Queue", variant="secondary")
@@ -92,7 +95,8 @@ def add_or_update_task_in_queue(state_dict_gr_state, *args_from_ui_controls_tupl
         # Prepare updates for all UI controls to reset them to defaults after adding/updating
         default_values_map = workspace_manager.get_default_values_map()
         ui_updates_to_reset = [gr.update(value=default_values_map.get(key)) for key in shared_state_module.ALL_TASK_UI_KEYS]
-        img_update_to_reset = gr.update(value=None, visible=False)
+        img_display_update_to_reset = gr.update(value=None, visible=False)
+        file_input_update_to_reset = gr.update(visible=True, value=None)
         clear_image_button_update_to_reset = gr.update(interactive=False, variant="secondary")
         download_image_button_update_to_reset = gr.update(interactive=False, variant="secondary")
         add_task_button_update_to_reset = gr.update(value="Add Task to Queue", variant="secondary")
@@ -107,7 +111,8 @@ def add_or_update_task_in_queue(state_dict_gr_state, *args_from_ui_controls_tupl
     return (
         state_dict_gr_state,
         queue_helpers.update_queue_df_display(queue_state),
-        img_update_to_reset,
+        img_display_update_to_reset,
+        file_input_update_to_reset,
         *ui_updates_to_reset,
         clear_image_button_update_to_reset,
         download_image_button_update_to_reset,
@@ -127,7 +132,8 @@ def cancel_edit_mode_action(state_dict_gr_state):
     ui_updates = [gr.update(value=default_values_map.get(key)) for key in shared_state_module.ALL_TASK_UI_KEYS]
 
     # Prepare updates for image display and its associated buttons
-    img_update = gr.update(value=None, visible=False) # Clear image display
+    img_display_update = gr.update(value=None, visible=False) # Clear image display
+    file_input_update = gr.update(visible=True, value=None) # Show file uploader
     clear_image_button_update = gr.update(interactive=False, variant="secondary")
     download_image_button_update = gr.update(interactive=False, variant="secondary")
 
@@ -138,7 +144,8 @@ def cancel_edit_mode_action(state_dict_gr_state):
     return (
         state_dict_gr_state,
         queue_helpers.update_queue_df_display(queue_state),
-        img_update, # INPUT_IMAGE_DISPLAY_UI
+        img_display_update, # INPUT_IMAGE_DISPLAY_UI
+        file_input_update, # IMAGE_FILE_INPUT_UI
         *ui_updates, # All other UI controls
         clear_image_button_update, # CLEAR_IMAGE_BUTTON_UI
         download_image_button_update, # DOWNLOAD_IMAGE_BUTTON_UI
@@ -149,7 +156,7 @@ def cancel_edit_mode_action(state_dict_gr_state):
 
 def handle_queue_action_on_select(evt: gr.SelectData, state_dict_gr_state, *ui_param_controls_tuple):
     if evt.index is None or evt.value not in ["↑", "↓", "✖", "✎"]:
-        return [state_dict_gr_state, queue_helpers.update_queue_df_display(queue_helpers.get_queue_state(state_dict_gr_state))] + [gr.update()] * (1 + len(shared_state_module.ALL_TASK_UI_KEYS) + 4)
+        return [state_dict_gr_state, queue_helpers.update_queue_df_display(queue_helpers.get_queue_state(state_dict_gr_state))] + [gr.update()] * (1 + 1 + len(shared_state_module.ALL_TASK_UI_KEYS) + 4)
     row_index, _ = evt.index
     button_clicked = evt.value
     queue_state = queue_helpers.get_queue_state(state_dict_gr_state)
@@ -161,10 +168,10 @@ def handle_queue_action_on_select(evt: gr.SelectData, state_dict_gr_state, *ui_p
             shared_state_module.shared_state_instance.interrupt_flag.set()
             shared_state_module.shared_state_instance.abort_state['level'] = 2
             # The task will be removed by process_task_queue_main_loop once it's aborted.
-            return [state_dict_gr_state, queue_helpers.update_queue_df_display(queue_state)] + [gr.update()] * (1 + len(shared_state_module.ALL_TASK_UI_KEYS) + 4)
+            return [state_dict_gr_state, queue_helpers.update_queue_df_display(queue_state)] + [gr.update()] * (1 + 1 + len(shared_state_module.ALL_TASK_UI_KEYS) + 4)
         elif button_clicked in ["↑", "↓"]: # Only prevent moving for processing task
             gr.Warning("Cannot modify a task that is currently processing.")
-            return [state_dict_gr_state, queue_helpers.update_queue_df_display(queue_state)] + [gr.update()] * (1 + len(shared_state_module.ALL_TASK_UI_KEYS) + 4)
+            return [state_dict_gr_state, queue_helpers.update_queue_df_display(queue_state)] + [gr.update()] * (1 + 1 + len(shared_state_module.ALL_TASK_UI_KEYS) + 4)
         # If button_clicked is "✎", we now allow it to fall through to the edit logic below
     if button_clicked == "↑":
         queue_helpers.move_task_in_queue(state_dict_gr_state, 'up', row_index)
@@ -180,11 +187,12 @@ def handle_queue_action_on_select(evt: gr.SelectData, state_dict_gr_state, *ui_p
         queue_state["editing_task_id"] = task_to_edit['id']
         gr.Info(f"Editing Task {task_to_edit['id']}.")
         img_np_from_task = params_to_load_to_ui.get('input_image')
-        img_update = gr.update(value=Image.fromarray(img_np_from_task), visible=True) if isinstance(img_np_from_task, np.ndarray) else gr.update(value=None, visible=False) # type: ignore
+        img_display_update = gr.update(value=Image.fromarray(img_np_from_task), visible=True) if isinstance(img_np_from_task, np.ndarray) else gr.update(value=None, visible=False) # type: ignore
+        file_input_update = gr.update(visible=False) # Hide the uploader when showing an image
         # Corrected: UI_TO_WORKER_PARAM_MAP keys are K enums, not their string values.
         ui_updates = [gr.update(value=params_to_load_to_ui.get(shared_state_module.UI_TO_WORKER_PARAM_MAP.get(key), None)) for key in shared_state_module.ALL_TASK_UI_KEYS]
-        return [state_dict_gr_state, queue_helpers.update_queue_df_display(queue_state), img_update] + ui_updates + [gr.update(), gr.update(), gr.update(value="Update Task", variant="primary"), gr.update(visible=True)]
-    return [state_dict_gr_state, queue_helpers.update_queue_df_display(queue_state)] + [gr.update()] * (len(shared_state_module.ALL_TASK_UI_KEYS) + 5)
+        return [state_dict_gr_state, queue_helpers.update_queue_df_display(queue_state), img_display_update, file_input_update] + ui_updates + [gr.update(), gr.update(), gr.update(value="Update Task", variant="primary"), gr.update(visible=True)]
+    return [state_dict_gr_state, queue_helpers.update_queue_df_display(queue_state)] + [gr.update()] * (1 + 1 + len(shared_state_module.ALL_TASK_UI_KEYS) + 4)
 
 
 def clear_task_queue_action(state_dict_gr_state):
