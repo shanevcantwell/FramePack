@@ -1,5 +1,8 @@
 import os
+import logging
 
+
+logger = logging.getLogger(__name__)
 
 def login(token):
     from huggingface_hub import login
@@ -8,10 +11,10 @@ def login(token):
     while True:
         try:
             login(token)
-            print('HF login ok.')
+            logger.info('HF login ok.')
             break
         except Exception as e:
-            print(f'HF login failed: {e}. Retrying')
+            logger.warning(f'HF login failed: {e}. Retrying...')
             time.sleep(0.5)
 
 

@@ -8,10 +8,13 @@ import einops
 import numpy as np
 import datetime
 import torchvision
+import logging
 
 import safetensors.torch as sf
 from PIL import Image
 
+
+logger = logging.getLogger(__name__)
 
 def min_resize(x, m):
     if x.shape[0] < x.shape[1]:
@@ -167,9 +170,9 @@ def print_tensor_list_size(tensors):
     total_size_MB = total_size / (1024 ** 2)
     total_elements_B = total_elements / 1e9
 
-    print(f"Total number of tensors: {len(tensors)}")
-    print(f"Total size of tensors: {total_size_MB:.2f} MB")
-    print(f"Total number of parameters: {total_elements_B:.3f} billion")
+    logger.info(f"Total number of tensors: {len(tensors)}")
+    logger.info(f"Total size of tensors: {total_size_MB:.2f} MB")
+    logger.info(f"Total number of parameters: {total_elements_B:.3f} billion")
     return
 
 
@@ -322,8 +325,8 @@ def print_free_mem():
     free_mem, total_mem = torch.cuda.mem_get_info(0)
     free_mem_mb = free_mem / (1024 ** 2)
     total_mem_mb = total_mem / (1024 ** 2)
-    print(f"Free memory: {free_mem_mb:.2f} MB")
-    print(f"Total memory: {total_mem_mb:.2f} MB")
+    logger.info(f"Free memory: {free_mem_mb:.2f} MB")
+    logger.info(f"Total memory: {total_mem_mb:.2f} MB")
     return
 
 
@@ -338,7 +341,7 @@ def print_gpu_parameters(device, state_dict, log_count=1):
 
     summary["params"] = logged_params
 
-    print(str(summary))
+    logger.info(str(summary))
     return
 
 

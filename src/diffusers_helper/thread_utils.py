@@ -1,8 +1,10 @@
 import time
+import logging
 
 from threading import Thread, Lock
 
 
+logger = logging.getLogger(__name__)
 class Listener:
     task_queue = []
     lock = Lock()
@@ -24,7 +26,7 @@ class Listener:
             try:
                 func(*args, **kwargs)
             except Exception as e:
-                print(f"Error in listener thread: {e}")
+                logger.error(f"Error in listener thread: {e}", exc_info=True)
     
     @classmethod
     def add_task(cls, func, *args, **kwargs):

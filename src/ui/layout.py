@@ -13,7 +13,6 @@ from . import shared_state as shared_state_module
 def create_ui():
     """
     Creates the Gradio UI layout and returns a dictionary of all UI components.
-    This separation of layout from logic makes the main script cleaner.
     """
 
     css = """
@@ -62,6 +61,13 @@ def create_ui():
         max-height: 95vh !important; /* Max height is 95% of the viewport height */
         object-fit: contain !important; /* This preserves the aspect ratio */
     }
+
+    /* --- NEW: Fix for fullscreen latent preview image --- */
+    #current_task_preview_image_ui div.fixed img {
+        max-width: 95vw !important;
+        max-height: 95vh !important;
+        object-fit: contain !important;
+    }
     """
 
     components = {}
@@ -95,12 +101,11 @@ def create_ui():
                     components[K.ADD_TASK_BUTTON] = gr.Button("Add to Queue", variant="secondary", interactive=False)
                     components[K.CANCEL_EDIT_TASK_BUTTON] = gr.Button("Cancel Edit", visible=False, variant="secondary")
                 with gr.Row():
-                    # Changed from DownloadButton to Button to enable one-click download via JS.
+                    components[K.CLEAR_IMAGE_BUTTON_UI] = gr.Button("Clear Image", variant="secondary", interactive=False, elem_id="clear_image_button")
                     components[K.DOWNLOAD_IMAGE_BUTTON_UI] = gr.Button("Download Image", variant="secondary", interactive=False, elem_id="download_image_button")
                 components[K.PROCESS_QUEUE_BUTTON] = gr.Button("▶️ Process Queue", variant="primary", interactive=False)
                 components[K.CREATE_PREVIEW_BUTTON] = gr.Button("📸 Create Preview", variant="secondary", interactive=False, elem_id="create_preview_button")
             with gr.Column(scale=2, min_width=600):
-                components[K.CLEAR_IMAGE_BUTTON_UI] = gr.Button("Clear Image", variant="secondary", interactive=False, elem_id="clear_image_button")
                 components[K.PROMPT_UI] = gr.Textbox(label="Prompt", lines=10)
                 components[K.N_PROMPT_UI] = gr.Textbox(label="Negative Prompt", lines=4)
                 with gr.Row():

@@ -2,6 +2,7 @@
 # This module acts as a central switchboard for wiring all Gradio events.
 
 import gradio as gr
+import logging
 
 from .enums import ComponentKey as K
 from . import (
@@ -12,6 +13,8 @@ from . import (
     event_handlers,
     shared_state as shared_state_module # Import module for access to instance
 )
+
+logger = logging.getLogger(__name__)
 
 def _wire_lora_events(components: dict):
     """Wires up the LoRA management UI events."""
@@ -128,8 +131,18 @@ def _wire_image_and_metadata_events(components: dict):
         js="() => { document.getElementById('image_downloader_hidden_file').querySelector('a[download]').click(); }"
     ))
 
-    components[K.MODAL_TRIGGER_BOX].change(fn=lambda x: gr.update(visible=True) if x else gr.update(visible=False), inputs=[components[K.MODAL_TRIGGER_BOX]], outputs=[components[K.METADATA_MODAL]], api_name=False, queue=False)
-    (components[K.CONFIRM_METADATA_BTN].click(fn=metadata_manager.ui_load_params_from_image_metadata, inputs=[components[K.EXTRACTED_METADATA_STATE]], outputs=creative_ui_components).then(fn=lambda: None, inputs=None, outputs=[components[K.MODAL_TRIGGER_BOX]]))
+    components[K.MODAL_TRIGGER_BOX].change(
+        fn=lambda x: gr.update(visible=True) if x else gr.update(visible=False), 
+        inputs=[components[K.MODAL_TRIGGER_BOX]], 
+        outputs=[components[K.METADATA_MODAL]], 
+        api_name=False, queue=False
+    )
+    (components[K.CONFIRM_METADATA_BTN].click(
+        fn=metadata_manager.ui_load_params_from_image_metadata, 
+        inputs=[components[K.EXTRACTED_METADATA_STATE]], 
+        outputs=creative_ui_components
+    ).then(fn=event_handlers.ui_update_total_segments, inputs=[components[K.TOTAL_SECOND_LENGTH_UI], components[K.LATENT_WINDOW_SIZE_UI], components[K.FPS_UI]], outputs=[components[K.TOTAL_SEGMENTS_DISPLAY_UI]]
+    ).then(fn=lambda: None, inputs=None, outputs=[components[K.MODAL_TRIGGER_BOX]]))
     components[K.CANCEL_METADATA_BTN].click(fn=lambda: None, inputs=None, outputs=[components[K.MODAL_TRIGGER_BOX]])
 
 def _wire_queue_events(components: dict):
@@ -154,17 +167,30 @@ def _wire_queue_events(components: dict):
         full_workspace_ui_components +
         [components[k] for k in [K.CLEAR_IMAGE_BUTTON_UI, K.DOWNLOAD_IMAGE_BUTTON_UI, K.ADD_TASK_BUTTON, K.CANCEL_EDIT_TASK_BUTTON]]
     )
+    add_task_outputs = (
+        [components[k] for k in [K.APP_STATE, K.QUEUE_DF_DISPLAY_UI, K.INPUT_IMAGE_DISPLAY_UI]] +
+        full_workspace_ui_components +
+        [components[k] for k in [K.CLEAR_IMAGE_BUTTON_UI, K.DOWNLOAD_IMAGE_BUTTON_UI, K.ADD_TASK_BUTTON, K.CANCEL_EDIT_TASK_BUTTON]]
+    )
+    cancel_edit_outputs = (
+        [components[k] for k in [K.APP_STATE, K.QUEUE_DF_DISPLAY_UI, K.INPUT_IMAGE_DISPLAY_UI]] +
+        full_workspace_ui_components +
+        [components[k] for k in [K.CLEAR_IMAGE_BUTTON_UI, K.DOWNLOAD_IMAGE_BUTTON_UI, K.ADD_TASK_BUTTON, K.CANCEL_EDIT_TASK_BUTTON]]
+    )
     process_q_outputs = [
         components[K.APP_STATE], components[K.QUEUE_DF_DISPLAY_UI], components[K.LAST_FINISHED_VIDEO_UI],
         components[K.CURRENT_TASK_PREVIEW_IMAGE_UI], components[K.CURRENT_TASK_PROGRESS_DESC_UI],
         components[K.CURRENT_TASK_PROGRESS_BAR_UI], components[K.PROCESS_QUEUE_BUTTON], components[K.CREATE_PREVIEW_BUTTON], components[K.CLEAR_QUEUE_BUTTON_UI]
     ]
     (components[K.ADD_TASK_BUTTON].click(
-        fn=queue_manager.add_or_update_task_in_queue, inputs=[components[K.APP_STATE]] + task_defining_ui_inputs,
-        outputs=[components[K.APP_STATE], components[K.QUEUE_DF_DISPLAY_UI], components[K.ADD_TASK_BUTTON], components[K.CANCEL_EDIT_TASK_BUTTON]]
+        fn=queue_manager.add_or_update_task_in_queue, inputs=[components[K.APP_STATE]] + task_defining_ui_inputs, outputs=add_task_outputs
     ).then(
         fn=event_handlers.update_button_states, inputs=[components[K.APP_STATE], components[K.INPUT_IMAGE_DISPLAY_UI], components[K.QUEUE_DF_DISPLAY_UI]],
         outputs=button_state_outputs
+    ).then( # NEW: Update segment display after adding/updating task
+        fn=event_handlers.ui_update_total_segments,
+        inputs=[components[K.TOTAL_SECOND_LENGTH_UI], components[K.LATENT_WINDOW_SIZE_UI], components[K.FPS_UI]],
+        outputs=[components[K.TOTAL_SEGMENTS_DISPLAY_UI]]
     ))
     (components[K.PROCESS_QUEUE_BUTTON].click(
         fn=queue_manager.process_task_queue_main_loop, inputs=[components[K.APP_STATE]] + lora_ui_controls, outputs=process_q_outputs
@@ -177,6 +203,19 @@ def _wire_queue_events(components: dict):
     ).then(
         fn=event_handlers.update_button_states, inputs=[components[K.APP_STATE], components[K.INPUT_IMAGE_DISPLAY_UI], components[K.QUEUE_DF_DISPLAY_UI]],
         outputs=button_state_outputs
+    ))
+    (components[K.CANCEL_EDIT_TASK_BUTTON].click(
+        fn=queue_manager.cancel_edit_mode_action, inputs=[components[K.APP_STATE]], outputs=cancel_edit_outputs
+    ).then(
+        fn=event_handlers.update_button_states, inputs=[components[K.APP_STATE], components[K.INPUT_IMAGE_DISPLAY_UI], components[K.QUEUE_DF_DISPLAY_UI]],
+        outputs=button_state_outputs
+    ))
+    (components[K.CANCEL_EDIT_TASK_BUTTON].click(
+        fn=queue_manager.cancel_edit_mode_action, inputs=[components[K.APP_STATE]], outputs=cancel_edit_outputs
+    ).then( # NEW: Update segment display after cancelling edit
+        fn=event_handlers.ui_update_total_segments,
+        inputs=[components[K.TOTAL_SECOND_LENGTH_UI], components[K.LATENT_WINDOW_SIZE_UI], components[K.FPS_UI]],
+        outputs=[components[K.TOTAL_SEGMENTS_DISPLAY_UI]]
     ))
     (components[K.CLEAR_QUEUE_BUTTON_UI].click(
         fn=queue_manager.clear_task_queue_action, inputs=[components[K.APP_STATE]], outputs=[components[K.APP_STATE], components[K.QUEUE_DF_DISPLAY_UI]]
@@ -205,6 +244,10 @@ def _wire_queue_events(components: dict):
     ).then(
         fn=event_handlers.update_button_states, inputs=[components[K.APP_STATE], components[K.INPUT_IMAGE_DISPLAY_UI], components[K.QUEUE_DF_DISPLAY_UI]],
         outputs=button_state_outputs
+    ).then(
+        fn=event_handlers.ui_update_total_segments,
+        inputs=[components[K.TOTAL_SECOND_LENGTH_UI], components[K.LATENT_WINDOW_SIZE_UI], components[K.FPS_UI]],
+        outputs=[components[K.TOTAL_SEGMENTS_DISPLAY_UI]]
     ))
 
 def _wire_misc_control_events(components: dict):
@@ -298,11 +341,11 @@ def wire_all_events(components: dict):
     """Main function to orchestrate the wiring of all UI events."""
     block = components[K.BLOCK]
     with block:
-        print("Wiring UI events from switchboard...")
+        logger.info("Wiring UI events from switchboard...")
         _wire_lora_events(components)
         _wire_workspace_events(components)
         _wire_image_and_metadata_events(components)
         _wire_queue_events(components)
         _wire_misc_control_events(components)
         _wire_app_startup_events(components)
-        print("All UI events wired.")
+        logger.info("All UI events wired.")

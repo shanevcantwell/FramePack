@@ -1,8 +1,3 @@
-# ui/lora.py (REVISED)
-# REVISION 7: Restored the key translation logic that was missing from the
-# previous version. This ensures LoRA keys are correctly matched to model layers.
-# The comprehensive merge logic for Linear and Conv2d layers is retained.
-
 import os
 import torch
 import torch.nn as nn

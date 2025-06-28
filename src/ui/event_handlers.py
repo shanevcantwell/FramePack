@@ -4,16 +4,18 @@ import time
 import tempfile
 from PIL import Image, PngImagePlugin
 
+import logging
 from . import metadata as metadata_manager
 from . import shared_state as shared_state_module
 from . import workspace as workspace_manager
 from .queue_helpers import get_queue_state
 from .queue import autosave_queue_on_exit_action
+logger = logging.getLogger(__name__)
 
 
 def safe_shutdown_action(app_state, *ui_values):
     """Performs all necessary save operations to prepare the app for a clean shutdown."""
-    print("Performing safe shutdown saves...")
+    logger.info("Performing safe shutdown saves...")
     # This call to autosave is correct as it comes from queue.py
     autosave_queue_on_exit_action(app_state)
     workspace_manager.save_ui_and_image_for_refresh(*ui_values)
@@ -22,11 +24,13 @@ def safe_shutdown_action(app_state, *ui_values):
 def ui_update_total_segments(total_seconds_ui, latent_window_size_ui, fps_ui):
     """Calculates and displays the number of segments based on video length."""
     try:
+        logger.debug(f"ui_update_total_segments received: total_seconds_ui={total_seconds_ui}, latent_window_size_ui={latent_window_size_ui}, fps_ui={fps_ui}")
         total_frames = int(total_seconds_ui * fps_ui)
         frames_per_segment = latent_window_size_ui * 4 - 3
         total_segments = int(max(round(total_frames / frames_per_segment), 1)) if frames_per_segment > 0 else 1
         return f"Calculated: {total_segments} Segments, {total_frames} Total Frames"
     except (TypeError, ValueError):
+        logger.error(f"Error in ui_update_total_segments. Inputs: total_seconds_ui={total_seconds_ui}, latent_window_size_ui={latent_window_size_ui}, fps_ui={fps_ui}", exc_info=True)
         return "Segments: Invalid input"
 
 def process_upload_and_show_image(temp_file_data):
@@ -103,8 +107,54 @@ def update_button_states(app_state, input_image_pil, queue_df_data):
     truth for button states and is called after any action that might change them.
     """
     queue_state = get_queue_state(app_state)
+
+    # First, check for the stop_requested state for immediate feedback.
+    if shared_state_module.shared_state_instance.stop_requested_flag.is_set():
+        return (
+            gr.update(interactive=False),  # ADD_TASK_BUTTON
+            gr.update(interactive=False, value="Stopping...", variant="stop"), # PROCESS_QUEUE_BUTTON
+            gr.update(interactive=False),  # CREATE_PREVIEW_BUTTON
+            gr.update(interactive=False),  # CLEAR_IMAGE_BUTTON_UI
+            gr.update(interactive=False),  # DOWNLOAD_IMAGE_BUTTON_UI
+            gr.update(interactive=False),  # SAVE_QUEUE_BUTTON_UI
+            gr.update(interactive=False),  # CLEAR_QUEUE_BUTTON_UI
+        )
+
+    is_editing = queue_state.get("editing_task_id") is not None
     is_processing = queue_state.get("processing", False)
+
+    # If we are in edit mode, the logic is simpler and overrides most other states.
+    if is_editing:
+        # Check if the task being edited is the one currently processing.
+        # The processing task is always at index 0.
+        process_queue_text = "▶️ Process Queue"
+        process_queue_variant = "primary"
+        process_queue_interactive = False
+
+        is_editing_processing_task = False
+        if is_processing and queue_state.get("queue"):
+            if queue_state["editing_task_id"] == queue_state["queue"][0]["id"]:
+                is_editing_processing_task = True
+        
+        # The "Update Task" button should be disabled if we're editing the processing task,
+        # as its settings cannot be changed "in mid-air".
+        update_task_interactive = not is_editing_processing_task
+
+        return (
+            gr.update(interactive=update_task_interactive, variant="primary"), # ADD_TASK_BUTTON (is now "Update Task")
+            gr.update(interactive=False, value="▶️ Process Queue", variant="secondary"), # PROCESS_QUEUE_BUTTON
+            gr.update(interactive=False, variant="secondary"), # CREATE_PREVIEW_BUTTON
+            gr.update(interactive=False, variant="secondary"), # CLEAR_IMAGE_BUTTON_UI
+            gr.update(interactive=False, variant="secondary"), # DOWNLOAD_IMAGE_BUTTON_UI
+            gr.update(interactive=False, variant="secondary"), # SAVE_QUEUE_BUTTON_UI
+            gr.update(interactive=False, variant="secondary"), # CLEAR_QUEUE_BUTTON_UI
+        )
+
     queue = queue_state.get("queue", [])
+    if is_processing:
+        process_queue_text = "⏹️ Stop Processing"
+        process_queue_variant = "stop"
+        process_queue_interactive = True
     queue_has_tasks = bool(queue)
     has_image = input_image_pil is not None
 

@@ -4,14 +4,16 @@
 import gradio as gr
 import json
 import os
-import traceback
 import tempfile
+import logging
 
 from . import shared_state as shared_state_module
 from . import metadata as metadata_manager
 from .enums import ComponentKey as K
 from . import legacy_support
 from PIL import Image
+
+logger = logging.getLogger(__name__)
 
 # --- Constants ---
 outputs_folder = './outputs/'
@@ -55,8 +57,7 @@ def save_settings_to_file(filepath, settings_dict):
             json.dump(settings_dict, f, indent=4)
         gr.Info(f"Workspace saved to {filepath}")
     except Exception as e:
-        gr.Warning(f"Error saving workspace: {e}")
-        traceback.print_exc()
+        logger.error(f"Error saving workspace: {e}", exc_info=True)
 
 def load_settings_from_file(filepath, return_updates=True):
     """Loads settings from a JSON file and returns Gradio updates or raw values."""
@@ -120,8 +121,7 @@ def get_initial_output_folder_from_settings():
             if 'output_folder_ui_ctrl' in settings:
                 return os.path.expanduser(settings['output_folder_ui_ctrl'])
         except Exception as e:
-            print(f"Warning: Could not load 'output_folder_ui_ctrl' from {filename_to_check}: {e}")
-            traceback.print_exc()
+            logger.warning(f"Could not load 'output_folder_ui_ctrl' from {filename_to_check}: {e}", exc_info=True)
 
     return default_output_folder_path
 
@@ -140,8 +140,7 @@ def save_workspace(*ui_values_tuple):
         gr.Info("Workspace prepared for download.")
         return temp_file_path
     except Exception as e:
-        gr.Warning(f"Error preparing workspace for download: {e}")
-        traceback.print_exc()
+        logger.error(f"Error preparing workspace for download: {e}", exc_info=True)
         return None
 
 def save_as_default_workspace(*ui_values_tuple):
@@ -178,8 +177,8 @@ def save_ui_and_image_for_refresh(*args_from_ui_controls_tuple):
             settings_to_save["refresh_image_path"] = refresh_image_path
             gr.Info(f"UI state saved, image written for refresh to {refresh_image_path}")
         except Exception as e:
-            print(f"Error saving refresh image: {e}"); traceback.print_exc()
-            gr.Warning(f"Could not save refresh image: {e}.")
+            logger.error(f"Error saving refresh image: {e}", exc_info=True)
+            gr.Warning(f"Could not save refresh image: {e}")
             if "refresh_image_path" in settings_to_save: del settings_to_save["refresh_image_path"]
     else:
         if "refresh_image_path" in settings_to_save: del settings_to_save["refresh_image_path"]
@@ -217,16 +216,16 @@ def load_workspace_on_start():
             if "refresh_image_path" in settings and os.path.exists(settings["refresh_image_path"]):
                 image_path_to_load = settings["refresh_image_path"]
         except (IOError, json.JSONDecodeError) as e:
-            print(f"Could not read {UNLOAD_SAVE_FILENAME} to find refresh image: {e}")
+            logger.warning(f"Could not read {UNLOAD_SAVE_FILENAME} to find refresh image: {e}")
             pass # Continue with the settings path anyway
     # Fall back to the default settings file if no unload save exists.
     elif os.path.exists(SETTINGS_FILENAME):
         settings_file_path = SETTINGS_FILENAME
 
     if settings_file_path:
-        print(f"Found workspace file to load on startup: {settings_file_path}")
+        logger.info(f"Found workspace file to load on startup: {settings_file_path}")
     else:
-        print("No workspace file found. Using default values.")
+        logger.info("No workspace file found. Using default values.")
 
     # Return exactly two values, which may be None.
     # The switchboard is designed to handle this.
@@ -243,70 +242,12 @@ def load_image_from_path(image_path):
                 try:
                     os.remove(image_path)
                 except OSError as e:
-                    print(f"Error deleting temporary refresh image '{image_path}': {e}")
+                    logger.warning(f"Error deleting temporary refresh image '{image_path}': {e}")
         except Exception as e:
-            print(f"Error loading refresh image from '{image_path}': {e}"); traceback.print_exc()
+            logger.error(f"Error loading refresh image from '{image_path}': {e}", exc_info=True)
             gr.Warning(f"Could not restore image from previous session: {e}")
             pil_image = None
 
     has_image = pil_image is not None
     return (gr.update(value=pil_image, visible=has_image), gr.update(interactive=has_image),
             gr.update(interactive=has_image), gr.update(visible=not has_image))
-
-def load_and_apply_startup_workspace():
-    """
-    A single, consolidated function to handle all startup workspace and image loading.
-    This replaces the multi-step .then() chain to improve robustness.
-    """
-    print("Consolidated startup: Loading workspace and image...")
-    
-    # --- Part 1: Find file paths (from load_workspace_on_start) ---
-    settings_file_path = None
-    image_path_to_load = None
-
-    if os.path.exists(UNLOAD_SAVE_FILENAME):
-        settings_file_path = UNLOAD_SAVE_FILENAME
-        try:
-            with open(settings_file_path, 'r', encoding='utf-8') as f:
-                settings = json.load(f)
-            if "refresh_image_path" in settings and os.path.exists(settings["refresh_image_path"]):
-                image_path_to_load = settings["refresh_image_path"]
-        except (IOError, json.JSONDecodeError) as e:
-            print(f"Could not read {UNLOAD_SAVE_FILENAME} to find refresh image: {e}")
-    elif os.path.exists(SETTINGS_FILENAME):
-        settings_file_path = SETTINGS_FILENAME
-
-    # --- Part 2: Load settings and generate UI updates (from load_settings_from_file) ---
-    # This returns a list of values, not gr.update objects yet.
-    loaded_values = load_settings_from_file(settings_file_path, return_updates=False)
-    
-    # Create a dictionary mapping UI component keys to their loaded values.
-    updates_map = dict(zip(shared_state_module.ALL_TASK_UI_KEYS, loaded_values))
-
-    # --- Part 3: Load image (from load_image_from_path) ---
-    pil_image = None
-    if image_path_to_load and os.path.exists(image_path_to_load):
-        try:
-            pil_image = Image.open(image_path_to_load)
-            # Clean up the temporary session-restore image
-            if REFRESH_IMAGE_FILENAME in os.path.basename(image_path_to_load) or tempfile.gettempdir() in os.path.abspath(image_path_to_load):
-                os.remove(image_path_to_load)
-        except Exception as e:
-            print(f"Error loading refresh image from '{image_path_to_load}': {e}")
-            gr.Warning(f"Could not restore image from previous session: {e}")
-    
-    has_image = pil_image is not None
-    
-    # --- Part 4: Prepare all UI updates to be returned ---
-    # Start with updates for the main workspace components
-    final_updates = [gr.update(value=updates_map.get(key)) for key in shared_state_module.ALL_TASK_UI_KEYS]
-    
-    # Add updates for the image display and its associated buttons
-    final_updates.append(gr.update(value=pil_image, visible=has_image)) # INPUT_IMAGE_DISPLAY_UI
-    final_updates.append(gr.update(interactive=has_image)) # CLEAR_IMAGE_BUTTON_UI
-    final_updates.append(gr.update(interactive=has_image)) # DOWNLOAD_IMAGE_BUTTON_UI
-    final_updates.append(gr.update(visible=not has_image))   # IMAGE_FILE_INPUT_UI
-
-
-    print("Consolidated startup: Finished loading. Returning UI updates.")
-    return final_updates

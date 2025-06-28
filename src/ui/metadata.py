@@ -1,6 +1,7 @@
 # ui/metadata.py
 import json
 import gradio as gr
+import logging
 from PIL import Image
 from PIL.PngImagePlugin import PngInfo
 
@@ -9,42 +10,37 @@ from . import shared_state as shared_state_module
 from .enums import ComponentKey as K
 from . import legacy_support
 
+logger = logging.getLogger(__name__)
+
 # --- Core Metadata Functions ---
 
 def extract_metadata_from_pil_image(pil_image: Image.Image) -> dict:
     """Extracts a 'parameters' dictionary from a PIL image's text chunk or info dictionary."""
     if pil_image is None:
-        # print("DEBUG (metadata.py - extract_metadata): pil_image is None.")
+        logger.debug("PIL image is None, cannot extract metadata.")
         return {}
-    
-    # Prioritize 'text' for explicit PNG text chunks
-    pnginfo_data = getattr(pil_image, 'text', None) 
-    if pnginfo_data is None and pil_image.info: # If 'text' is not directly available, check 'info'
-        pnginfo_data = pil_image.info
-    #     print(f"DEBUG (metadata.py - extract_metadata): Using pil_image.info. Content: {pnginfo_data}")
-    # else:
-    #     print(f"DEBUG (metadata.py - extract_metadata): Using pil_image.text. Content: {pnginfo_data}")
 
+    pnginfo_data = getattr(pil_image, 'text', None)
+    if pnginfo_data is None and pil_image.info:
+        pnginfo_data = pil_image.info
 
     if not isinstance(pnginfo_data, dict):
-        # print(f"DEBUG (metadata.py - extract_metadata): pnginfo_data is not a dictionary. Type: {type(pnginfo_data)}")
+        logger.debug(f"Metadata not found: pnginfo_data is not a dictionary. Type: {type(pnginfo_data)}")
         return {}
 
-    # The key 'parameters' should be directly in the dictionary
-    params_json_str = pnginfo_data.get('parameters') 
+    params_json_str = pnginfo_data.get('parameters')
     if not params_json_str:
-        # print(f"DEBUG (metadata.py - extract_metadata): 'parameters' key not found in metadata.")
+        logger.debug("Metadata not found: 'parameters' key missing.")
         return {}
-    
+
     try:
-        extracted_params = json.loads(params_json_str) #
+        extracted_params = json.loads(params_json_str)
         if not isinstance(extracted_params, dict):
-            # print(f"DEBUG (metadata.py - extract_metadata): Decoded parameters is not a dict. Type: {type(extracted_params)}")
+            logger.debug(f"Invalid metadata: Decoded parameters is not a dictionary. Type: {type(extracted_params)}")
             return {}
-        # print(f"DEBUG (metadata.py - extract_metadata): Successfully extracted parameters: {extracted_params}")
         return extracted_params
     except json.JSONDecodeError as e:
-        print(f"Error decoding metadata JSON: {e}") #
+        logger.error(f"Error decoding metadata JSON: {e}", exc_info=True)
         return {}
 
 def create_pnginfo_obj(params_dict: dict) -> PngInfo:
@@ -69,16 +65,11 @@ def open_and_check_metadata(temp_filepath: str):
         else:
             pil_image = pil_image.convert('RGBA')
         extracted_metadata = extract_metadata_from_pil_image(pil_image)
-        # print(f"DEBUG (metadata.py): Extracted metadata: {extracted_metadata}") 
         prompt_preview = ""
         if extracted_metadata and any(key in extracted_metadata for key in shared_state_module.CREATIVE_PARAM_KEYS):
             prompt_preview = extracted_metadata.get('prompt', '')
-            # print(f"DEBUG (metadata.py): Metadata detected, prompt preview: '{prompt_preview}'") 
-        # else:
-            # print(f"DEBUG (metadata.py): No relevant metadata found or extraction failed.") 
         return pil_image, prompt_preview, extracted_metadata
     except Exception as e:
-        # print(f"DEBUG (metadata.py): Error processing uploaded file in open_and_check_metadata: {e}") 
         gr.Warning(f"Could not open image. It may be corrupt or an unsupported format. Error: {e}")
         return None, "", {}
 

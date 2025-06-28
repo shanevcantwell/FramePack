@@ -25,6 +25,9 @@ class SharedState:
 # This is kept for compatibility and as a simple, overarching abort flag.
         self.interrupt_flag: threading.Event = threading.Event()
 
+# Event to signal that a stop has been requested, for immediate UI feedback.
+        self.stop_requested_flag: threading.Event = threading.Event()
+
 # Event to signal that a preview should be generated for the current segment.
         self.preview_request_flag: threading.Event = threading.Event()
 
@@ -91,8 +94,7 @@ UI_TO_WORKER_PARAM_MAP = {
 
 # The CREATIVE_PARAM_KEYS list defines the canonical names for parameters that are saved
 # within image metadata and is used when loading that metadata back into the UI.
-# This logic is now correct as it iterates over a list of enums.
 CREATIVE_PARAM_KEYS = [UI_TO_WORKER_PARAM_MAP[key] for key in CREATIVE_UI_KEYS]
 
-# ADDED: Centralized constant for the queue state JSON filename inside the zip.
+# Centralized constant for the queue state JSON filename inside the zip.
 QUEUE_STATE_JSON_IN_ZIP = "queue_state.json"
