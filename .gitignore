@@ -194,3 +194,4 @@ run_goan.sh
 src/core/generation_core.bak.py
 dossier*.txt
 goan.code-workspace
+goan.log.*
