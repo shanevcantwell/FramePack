@@ -1,8 +1,8 @@
 # **goan: A Power-User UI for FramePack**
 ![goan_ui_running_collapsed_including_mp4_preview](https://github.com/user-attachments/assets/ba7cbe9e-2684-4f00-80fe-82907467eaff)
 
-[!IMPORTANT]
-An absolute must-read before even touching `goan` is [the official FramePack by lllyasviel documentation](https://github.com/lllyasviel/FramePack), as it contains beautiful examples of what FramePack is capable of from just the most basic controls exposed in the engine's repo:
+> [!IMPORTANT]
+> An absolute must-read before even touching `goan` is [the official FramePack by lllyasviel documentation](https://github.com/lllyasviel/FramePack), as it contains beautiful examples of what FramePack is capable of from just the most basic controls exposed in the engine's repo:
 
 ---
 Introducing goan, an enhanced user interface designed for creative professionals and power users of FramePack. This project builds upon the brilliant FramePack video generation engine created by lllyasviel (of Fooocus and the Stable Diffusion Forge fork of A1111), exposing useful controls to reach further into FramePack's functionality through a robust and intuitive interface.
