@@ -196,6 +196,4 @@ dossier*.txt
 goan.code-workspace
 goan.log.*
 *.bak.py
-src/ui/bak/event_handlers.py
-src/ui/bak/queue.py
-src/ui/bak/switchboard.py
+src/ui/bak/
