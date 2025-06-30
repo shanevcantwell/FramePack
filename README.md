@@ -1,3 +1,6 @@
+> [!IMPORTANT]
+> I'm detangling a couple blocking bugs that made it into the repo here. Be fixed soon. It's my first day.
+
 # **goan: A Power-User UI for FramePack**
 ![goan_ui_running_collapsed_including_mp4_preview](https://github.com/user-attachments/assets/ba7cbe9e-2684-4f00-80fe-82907467eaff)
 
