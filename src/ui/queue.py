@@ -1,4 +1,4 @@
-﻿# ui/queue.py
+# ui/queue.py
 # Handles all user-facing queue management logic and event handling for the UI.
 
 import gradio as gr

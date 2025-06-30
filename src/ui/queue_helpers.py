@@ -1,4 +1,4 @@
-﻿# ui/queue_helpers.py
+# ui/queue_helpers.py
 # Contains helper functions for queue state management and UI data formatting.
 
 import gradio as gr
