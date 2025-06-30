@@ -7,11 +7,11 @@ from PIL import Image
 import os
 import json
 import io
-import queue
 import zipfile # Keep this for save
 import tempfile # Keep this for save
 import shutil
 import logging
+import queue # For queue.Empty exception
 
 from .queue_manager import queue_manager_instance
 from . import shared_state as shared_state_module
@@ -59,6 +59,58 @@ def add_or_update_task_in_queue(state_dict_gr_state, *args_from_ui_controls_tupl
     
     # After adding/updating, reset the UI to its default state
     return cancel_edit_mode_action(state_dict_gr_state)
+
+
+def process_task_queue_and_listen(state_dict_gr_state, *lora_control_values):
+    """Starts the ProcessingAgent and listens for UI updates."""
+    agent = ProcessingAgent()
+    agent.send({
+        "type": "start",
+        "lora_controls": lora_control_values
+    })
+
+    # The listener loop. It doesn't manage state, just streams updates from the agent.
+    while True:
+        try:
+            # Block until an update is available from the agent's UI queue.
+            flag, data = ui_update_queue.get(timeout=1.0)
+
+            if flag == "progress":
+                # Unpack data: task_id, preview_np, desc, html
+                _, preview_np, desc, html = data
+                yield (state_dict_gr_state, gr.update(), gr.update(), gr.update(value=preview_np), desc, html, gr.update(), gr.update(), gr.update())
+            elif flag == "file":
+                # Unpack data: task_id, new_video_path, _
+                _, new_video_path, _ = data
+                yield (state_dict_gr_state, gr.update(), gr.update(value=new_video_path), gr.update(), gr.update(), gr.update(), gr.update(), gr.update(), gr.update())
+            elif flag == "task_starting":
+                task = data
+                yield (state_dict_gr_state, queue_helpers.update_queue_df_display(), gr.update(), gr.update(), f"Processing Task {task['id']}...", gr.update(), gr.update(), gr.update(), gr.update())
+            elif flag == "task_finished":
+                yield (state_dict_gr_state, queue_helpers.update_queue_df_display(), gr.update(), gr.update(), f"Task {data['id']} {data['status']}.", gr.update(), gr.update(), gr.update(), gr.update())
+            elif flag == "info":
+                gr.Info(data)
+            elif flag == "queue_finished":
+                # The agent has signaled the end of all processing.
+                logger.info("UI listener received 'queue_finished' signal. Exiting loop.")
+                break
+
+        except queue.Empty:
+            # If the queue is empty, we check if the agent is still processing.
+            # If not, it means the process finished or was stopped without a final signal.
+            if not queue_manager_instance.get_state().get("processing", False):
+                logger.info("UI listener detected processing has stopped. Exiting loop.")
+                break
+            continue # Continue waiting for updates.
+
+    # The .then() call in the switchboard will handle the final button state update.
+    # We just need to yield one last time to ensure the final queue state is displayed.
+    logger.info("UI listener loop finished. Yielding final queue display.")
+    yield (
+        state_dict_gr_state,
+        queue_helpers.update_queue_df_display(),
+        gr.update(), gr.update(), gr.update(), gr.update(), gr.update(), gr.update(), gr.update()
+    )
 
 
 def cancel_edit_mode_action(state_dict_gr_state):
@@ -254,219 +306,3 @@ def autosave_queue_on_exit_action(state_dict_gr_state_ref):
             logger.info(f"Autosave successful: Queue saved to {AUTOSAVE_FILENAME}")
     except Exception as e:
         logger.error(f"Error during autosave: {e}", exc_info=True)
-
-    """Main loop for processing tasks. It streams progress updates to the UI."""
-    queue_state = queue_helpers.get_queue_state(state_dict_gr_state)
-
-    if queue_state.get("processing", False):
-        gr.Info("Stop signal sent. Waiting for current step to finish...")
-        shared_state_module.shared_state_instance.stop_requested_flag.set()
-        shared_state_module.shared_state_instance.preview_request_flag.clear()
-        shared_state_module.shared_state_instance.interrupt_flag.set()  # Signal a hard stop for the queue loop
-        shared_state_module.shared_state_instance.abort_state['level'] = 2  # Signal a hard stop for the worker
-        logger.info("Stop signal sent to worker. Interrupt Level: 2.")
-        # We no longer yield here. The .then() call to update_button_states will now handle the UI feedback.
-        return
-
-    # --- START LOGIC ---
-    shared_state_module.shared_state_instance.interrupt_flag.clear()
-    shared_state_module.shared_state_instance.abort_state.update({"level": 0, "last_click_time": 0})
-
-    if not queue_state["queue"]:
-        gr.Info("Queue is empty. Add tasks to process.")
-        yield (
-            state_dict_gr_state,
-            queue_helpers.update_queue_df_display(queue_state),
-            gr.update(), gr.update(), gr.update(), gr.update(),
-            gr.update(interactive=False, value="Queue Empty", variant="secondary"),
-            gr.update(interactive=False),
-            gr.update(interactive=True), # CLEAR_QUEUE_BUTTON_UI
-        )
-        return
-
-    queue_state["processing"] = True
-    output_stream = AsyncStream()
-    state_dict_gr_state["active_output_stream_queue"] = output_stream
-
-    has_pending_tasks_at_start = any(task.get("status", "pending") == "pending" for task in queue_state["queue"])
-
-    yield (
-           state_dict_gr_state,
-        queue_helpers.update_queue_df_display(queue_state),
-        gr.update(),
-        gr.update(visible=False),
-        gr.update(value="Queue processing started..."),
-        gr.update(value=""),
-        gr.update(interactive=True, value="⏹️ Stop Processing", variant="stop"), # PROCESS_QUEUE_BUTTON
-        gr.update(interactive=False), # Always start disabled, enable on valid segments
-        gr.update(interactive=has_pending_tasks_at_start),
-    )
-
-    lora_handler = lora_manager.LoRAManager()
-    try:
-        if lora_control_values and len(lora_control_values) >= 3:
-            lora_name, lora_weight, lora_targets = lora_control_values
-            lora_handler.apply_lora(lora_name, lora_weight, lora_targets)
-
-        while queue_state["queue"] and not shared_state_module.shared_state_instance.interrupt_flag.is_set():
-            with shared_state_module.shared_state_instance.queue_lock:
-                current_task = queue_state["queue"][0]
-
-            if current_task.get("params", {}).get("seed") == -1:
-                current_task["params"]["seed"] = np.random.randint(0, 2**32 - 1)
-
-            current_task["status"] = "processing"
-
-            # Check for pending tasks *excluding* the one that is now processing.
-            has_pending_tasks_during_run = any(task.get("status", "pending") == "pending" for task in queue_state["queue"][1:])
-
-            yield (
-                state_dict_gr_state,
-                queue_helpers.update_queue_df_display(queue_state),
-                gr.update(),
-                gr.update(visible=True),
-                gr.update(value=f"Processing Task {current_task['id']}..."),
-                gr.update(value=""),
-                gr.update(interactive=True, value="⏹️ Stop Processing", variant="stop"), # PROCESS_QUEUE_BUTTON
-                gr.update(interactive=False), # Always start disabled, enable on valid segments
-                gr.update(interactive=has_pending_tasks_during_run),
-            )
-
-            worker_args = {**current_task["params"], "task_id": current_task["id"], **shared_state_module.shared_state_instance.models}
-            worker_args.pop('transformer', None) # The worker doesn't take the transformer as a direct kwarg.
-            async_run(worker_wrapper, output_queue_ref=output_stream.output_queue, **worker_args)
-
-            last_video_path_for_task = None
-            task_completed_successfully = False
-
-            while True:
-                # Add an explicit interrupt check here to make the Stop button more responsive.
-                if shared_state_module.shared_state_instance.interrupt_flag.is_set():
-                    break
-
-                flag, data = output_stream.output_queue.next()
-
-                if flag == "progress":
-                    task_id, preview_np, desc, html = data
-
-                    # This yield only updates the progress display components.
-                    # Button state is handled by event_handlers.update_button_states,
-                    # which is called by the main UI thread after specific events.
-                    yield (state_dict_gr_state, gr.update(), gr.update(), gr.update(value=preview_np), desc, html, gr.update(), gr.update(), gr.update())
-                elif flag == "file":
-                    _, new_video_path, _ = data
-                    last_video_path_for_task = new_video_path
-
-                    # --- FIX: Explicitly update button states when a file is generated ---
-                    # A file being saved (especially a preview) is a key time to update button states,
-                    # as the preview_request_flag has just been cleared in the backend.
-                    create_preview_interactive = not shared_state_module.shared_state_instance.preview_request_flag.is_set()
-                    create_preview_variant = "primary" if create_preview_interactive else "secondary"
-                    
-                    has_pending_tasks_during_run = any(task.get("status", "pending") == "pending" for task in queue_state["queue"][1:])
-                    clear_queue_variant = "stop" if has_pending_tasks_during_run else "secondary"
-
-                    yield (state_dict_gr_state, gr.update(), gr.update(value=new_video_path), gr.update(), gr.update(), gr.update(), gr.update(), gr.update(interactive=create_preview_interactive, variant=create_preview_variant), gr.update(interactive=has_pending_tasks_during_run, variant=clear_queue_variant))
-                elif flag == "crash":
-                    task_completed_successfully = False
-                    gr.Warning(f"Task {current_task['id']} failed! Check console for traceback.")
-                    current_task["status"] = "error"
-                    current_task["error_message"] = "Worker process crashed."
-                    break
-                elif flag == "end":
-                    # The 'end' signal from the worker indicates the worker thread has finished.
-                    # 'data' here is (task_id, success_status, final_output_filename_from_worker)
-                    worker_task_id, worker_success_status, worker_final_output_filename = data                    
-                    if worker_success_status:
-                        current_task["status"] = "done"
-                        if worker_final_output_filename:
-                            current_task["final_output_filename"] = worker_final_output_filename
-                    else:
-                        # If worker_success_status is False, it means either a crash or an abort.
-                        # We need to check current_task["status"] which would have been set by "crash" or "aborted" flags.
-                        # If it wasn't set by those, it implies an unhandled worker exit.
-                        if current_task["status"] not in ["error", "aborted"]:
-                            current_task["status"] = "error" # Default to error if not explicitly aborted/crashed
-                            current_task["error_message"] = "Worker exited unexpectedly."
-                    break
-                elif flag == "aborted": # Handle explicit abort signal from worker
-                    task_completed_successfully = False # Task did not complete successfully
-                    gr.Info(f"Task {current_task['id']} aborted by user.")
-                    current_task["status"] = "aborted"
-                    # No error_message for aborts, it's a user action
-                    break
-
-            with shared_state_module.shared_state_instance.queue_lock:
-                if current_task["status"] in ["done", "error", "aborted"] and queue_state["queue"] and queue_state["queue"][0]["id"] == current_task["id"]:
-                    queue_state["queue"].pop(0)
-
-            final_video_for_display = state_dict_gr_state.get("last_completed_video_path")
-            if current_task["status"] == "done" and current_task.get("final_output_filename"):
-                final_video_for_display = current_task["final_output_filename"]
-                state_dict_gr_state["last_completed_video_path"] = final_video_for_display
-            elif last_video_path_for_task:
-                final_video_for_display = last_video_path_for_task
-
-            # After a task is done, re-check for any remaining pending tasks.
-            has_pending_tasks_after_task = any(task.get("status", "pending") == "pending" for task in queue_state["queue"])
-            queue_is_empty_after_task = not bool(queue_state["queue"])
-            queue_has_tasks_at_end = not queue_is_empty_after_task
-            
-            # Determine status message for the just-finished/aborted task
-            task_status_message = ""
-            if current_task["status"] == "done":
-                task_status_message = f"Task {current_task['id']} finished."
-            elif current_task["status"] == "aborted":
-                task_status_message = f"Task {current_task['id']} aborted by user."
-            elif current_task["status"] == "error":
-                task_status_message = f"Task {current_task['id']} failed!"
-
-            # Determine PROCESS_QUEUE_BUTTON state
-            process_queue_button_text = "▶️ Process Queue"
-            process_queue_button_variant = "primary"
-            process_queue_button_interactive = queue_has_tasks_at_end # Can restart if tasks remain
-
-            # Determine CREATE_PREVIEW_BUTTON state
-            create_preview_interactive = not shared_state_module.shared_state_instance.preview_request_flag.is_set() and not queue_is_empty_after_task and not shared_state_module.shared_state_instance.interrupt_flag.is_set()
-            create_preview_variant = "primary" if create_preview_interactive else "secondary"
-
-            yield (
-                state_dict_gr_state,
-                queue_helpers.update_queue_df_display(queue_state),
-                gr.update(value=final_video_for_display),
-                gr.update(), # Keep the last preview visible
-                gr.update(value=task_status_message),
-                gr.update(value=""),
-                gr.update(interactive=process_queue_button_interactive, value=process_queue_button_text, variant=process_queue_button_variant),
-                gr.update(interactive=create_preview_interactive, variant=create_preview_variant),
-                gr.update(interactive=has_pending_tasks_after_task),
-            )
-
-            if shared_state_module.shared_state_instance.interrupt_flag.is_set():
-                gr.Info("Queue processing stopped by user.")
-                break
-
-            shared_state_module.shared_state_instance.abort_state["level"] = 0
-
-    finally:
-        logger.info("Processing finished. Reverting all LoRAs to clean up.")
-        lora_handler.revert_all_loras()
-        shared_state_module.shared_state_instance.stop_requested_flag.clear()
-
-    queue_state["processing"] = False
-    state_dict_gr_state["active_output_stream_queue"] = None
-    final_status_message = "All tasks processed." if not shared_state_module.shared_state_instance.interrupt_flag.is_set() else "Queue processing stopped."
-    final_video_to_show = state_dict_gr_state.get("last_completed_video_path") # This line was missing
-    queue_has_tasks_at_end = bool(queue_state["queue"])
-
-    yield (
-        state_dict_gr_state,
-        queue_helpers.update_queue_df_display(queue_state),
-        gr.update(value=final_video_to_show),
-        gr.update(visible=False),
-        gr.update(value=final_status_message),
-        gr.update(value=""),
-        gr.update(interactive=queue_has_tasks_at_end, value="▶️ Process Queue", variant="primary"),
-        gr.update(interactive=False),
-        gr.update(interactive=queue_has_tasks_at_end),
-    )

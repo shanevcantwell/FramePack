@@ -193,7 +193,7 @@ def _wire_queue_events(components: dict):
         outputs=[components[K.TOTAL_SEGMENTS_DISPLAY_UI]]
     ))
     (components[K.PROCESS_QUEUE_BUTTON].click(
-        fn=queue_manager.process_task_queue_main_loop, inputs=[components[K.APP_STATE]] + lora_ui_controls, outputs=process_q_outputs
+        fn=queue_manager.process_task_queue_and_listen, inputs=[components[K.APP_STATE]] + lora_ui_controls, outputs=process_q_outputs      
     ).then(
         fn=event_handlers.update_button_states, inputs=[components[K.APP_STATE], components[K.INPUT_IMAGE_DISPLAY_UI], components[K.QUEUE_DF_DISPLAY_UI]],
         outputs=button_state_outputs

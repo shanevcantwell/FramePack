@@ -37,19 +37,22 @@ class ProcessingAgent(threading.Thread):
             with cls._lock:
                 if cls._instance is None:
                     cls._instance = super(ProcessingAgent, cls).__new__(cls)
-                    cls._instance._initialized = False
         return cls._instance
 
     def __init__(self):
         if hasattr(self, '_initialized') and self._initialized:
             return
-        super().__init__(daemon=True)
+
         with self._lock:
-            if self._initialized: return
+            # Double-check inside the lock to ensure initialization happens only once.
+            if hasattr(self, '_initialized') and self._initialized:
+                return
+
+            super().__init__(daemon=True)
+            self.mailbox = queue.Queue()
+            self.is_processing = False
+            self.start()
             self._initialized = True
-        self.mailbox = queue.Queue()
-        self.is_processing = False
-        self.start() # Start the agent's own thread
 
     def send(self, message):
         self.mailbox.put(message)
