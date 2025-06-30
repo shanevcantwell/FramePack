@@ -1,3 +1,10 @@
+--- a/w:\home\shane\github\shanevcantwell\goan\src\ui\queue.py
++++ b/w:\home\shane\github\shanevcantwell\goan\src\ui\queue.py
+@@ -23,61 +23,55 @@
+     editing_task_id = queue_state.get("editing_task_id", None)
+     input_image_pil = args_from_ui_controls_tuple[
+
+
 # ui/event_handlers.py
 import gradio as gr
 import time
