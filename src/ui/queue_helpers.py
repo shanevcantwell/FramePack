@@ -37,6 +37,12 @@ def np_to_base64_uri(np_array_or_tuple, format="png"):
         logger.error(f"Error converting NumPy to base64: {e}", exc_info=True)
         return None
 
+def get_queue_state(app_state):
+    """Retrieves the current queue state from the app state."""
+    if isinstance(app_state, dict):
+        return app_state.get("queue_state", {})
+    return {}
+
 def update_queue_df_display():
     """Formats the current queue state into a Gradio DataFrame update object for display."""
     queue_state = queue_manager_instance.get_state()

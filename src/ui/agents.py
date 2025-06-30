@@ -64,54 +64,95 @@ class ProcessingAgent(threading.Thread):
                 self._handle_stop()
 
     def _handle_start(self, message):
-        if self.is_processing: return
-        self.is_processing = True
-        
-        tasks_to_process = queue_manager_instance.get_pending_tasks()
-        if not tasks_to_process:
-            self.is_processing = False
+        if self.is_processing:
             return
+
+        if not queue_manager_instance.has_pending_tasks():
+            ui_update_queue.put(("info", "Queue is empty. Add tasks to process."))
+            return
+
+        self.is_processing = True
         queue_manager_instance.set_processing(True)
-        
+        shared_state_module.shared_state_instance.interrupt_flag.clear()
+        shared_state_module.shared_state_instance.abort_state.update({"level": 0, "last_click_time": 0})
+
         # Run the actual processing in a separate thread to not block the agent's mailbox
         processing_thread = threading.Thread(target=self._processing_loop, args=(message,))
         processing_thread.start()
 
     def _handle_stop(self):
-        if not self.is_processing: return
+        if not self.is_processing:
+            return
         shared_state_module.shared_state_instance.interrupt_flag.set()
         shared_state_module.shared_state_instance.abort_state['level'] = 2
         logger.info("Stop signal sent to worker. Interrupt Level: 2.")
 
     def _processing_loop(self, start_message):
-        tasks, lora_controls = start_message["tasks"], start_message["lora_controls"]
-        
+        lora_controls = start_message.get("lora_controls")
+
         lora_handler = LoRAManager()
         try:
             if lora_controls:
                 lora_handler.apply_lora(*lora_controls)
 
-            for task in tasks:
-                if shared_state_module.shared_state_instance.interrupt_flag.is_set():
-                    ui_update_queue.put(("info", "Queue processing stopped by user."))
+            while not shared_state_module.shared_state_instance.interrupt_flag.is_set():
+                task = queue_manager_instance.get_and_start_next_task()
+
+                if task is None:  # No more pending tasks
+                    ui_update_queue.put(("info", "All tasks processed."))
                     break
 
-                if task.get("params", {}).get("seed") == -1:
-                    task["params"]["seed"] = np.random.randint(0, 2**32 - 1)
-                
                 ui_update_queue.put(("task_starting", task))
-                
+
                 output_stream = AsyncStream()
                 worker_args = {**task["params"], "task_id": task["id"], **shared_state_module.shared_state_instance.models}
                 worker_args.pop('transformer', None)
                 async_run(worker_wrapper, output_queue_ref=output_stream.output_queue, **worker_args)
 
-                for flag, data in output_stream.output_queue:
+                task_final_status = "error"
+                final_output_path = None
+                error_message = "Worker exited unexpectedly."
+
+                while True:
+                    if shared_state_module.shared_state_instance.interrupt_flag.is_set():
+                        break
+
+                    flag, data = output_stream.output_queue.next()
                     ui_update_queue.put((flag, data))
-                    if flag in ["end", "crash"]: break
+
+                    if flag == "end":
+                        _, success, final_path = data
+                        task_final_status = "done" if success else "error"
+                        final_output_path = final_path
+                        break
+                    elif flag == "crash":
+                        task_final_status = "error"
+                        error_message = "Worker process crashed."
+                        break
+                    elif flag == "aborted":
+                        task_final_status = "aborted"
+                        error_message = None
+                        break
+                    elif flag == "file":
+                        _, new_video_path, _ = data
+                        final_output_path = new_video_path
+
+                queue_manager_instance.complete_task(
+                    task_id=task["id"],
+                    status=task_final_status,
+                    final_path=final_output_path,
+                    error_msg=error_message
+                )
+                ui_update_queue.put(("task_finished", {"id": task["id"], "status": task_final_status}))
+
+                if shared_state_module.shared_state_instance.interrupt_flag.is_set():
+                    ui_update_queue.put(("info", "Queue processing stopped by user."))
+                    break
         finally:
             logger.info("Processing finished. Reverting all LoRAs to clean up.")
             lora_handler.revert_all_loras()
             self.is_processing = False
             queue_manager_instance.set_processing(False)
+            shared_state_module.shared_state_instance.interrupt_flag.clear()
+            shared_state_module.shared_state_instance.abort_state.update({"level": 0, "last_click_time": 0})
             ui_update_queue.put(("queue_finished", None))

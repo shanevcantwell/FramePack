@@ -8,7 +8,7 @@ import logging
 from . import metadata as metadata_manager
 from . import shared_state as shared_state_module
 from . import workspace as workspace_manager
-from .queue_helpers import get_queue_state
+from .queue_manager import queue_manager_instance
 from .queue import autosave_queue_on_exit_action
 logger = logging.getLogger(__name__)
 
@@ -106,7 +106,7 @@ def update_button_states(app_state, input_image_pil, queue_df_data):
     based on the current application state. This function is the single source of
     truth for button states and is called after any action that might change them.
     """
-    queue_state = get_queue_state(app_state)
+    queue_state = queue_manager_instance.get_state()
 
     # First, check for the stop_requested state for immediate feedback.
     if shared_state_module.shared_state_instance.stop_requested_flag.is_set():

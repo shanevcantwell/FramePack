@@ -7,88 +7,66 @@ from PIL import Image
 import os
 import json
 import io
-import zipfile
-import tempfile
-import traceback
-import time
+import queue
+import zipfile # Keep this for save
+import tempfile # Keep this for save
 import shutil
 import logging
 
-from . import lora as lora_manager
+from .queue_manager import queue_manager_instance
 from . import shared_state as shared_state_module
 from .enums import ComponentKey as K
 from . import workspace as workspace_manager
-from core.generation_core import worker
-from diffusers_helper.thread_utils import AsyncStream, async_run
 from . import queue_helpers
+from .agents import ProcessingAgent, ui_update_queue
 
-# Initialize logger for this module
 logger = logging.getLogger(__name__)
 
 AUTOSAVE_FILENAME = "goan_autosave_queue.zip"
 
 
-def worker_wrapper(output_queue_ref, **kwargs):
-    """
-    A wrapper that calls the real worker in a try-except block
-    to catch and report any backend exceptions to the console.
-    """
-    try:
-        worker(output_queue_ref=output_queue_ref, **kwargs)
-    except Exception as e:
-        tb_str = traceback.format_exc()
-        logger.error(f"--- BACKEND WORKER CRASHED ---\n{tb_str}\n--------------------------", exc_info=True)
-        output_queue_ref.push(('crash', tb_str))
-
-
 def add_or_update_task_in_queue(state_dict_gr_state, *args_from_ui_controls_tuple):
-    queue_state = queue_helpers.get_queue_state(state_dict_gr_state)
-    editing_task_id = queue_state.get("editing_task_id", None)
+    editing_task_id = queue_manager_instance.get_state().get("editing_task_id")
     input_image_pil = args_from_ui_controls_tuple[0]
     if not input_image_pil:
         gr.Warning("Input image is required!")
-        return queue_helpers.update_queue_df_display()
-   
+        return (
+            state_dict_gr_state,
+            queue_helpers.update_queue_df_display(),
+            gr.update(value=None, visible=False), # INPUT_IMAGE_DISPLAY_UI
+            gr.update(visible=True, value=None), # IMAGE_FILE_INPUT_UI
+            *[gr.update() for _ in shared_state_module.ALL_TASK_UI_KEYS], # All other UI controls
+            gr.update(interactive=False, variant="secondary"), # CLEAR_IMAGE_BUTTON_UI
+            gr.update(interactive=False, variant="secondary"), # DOWNLOAD_IMAGE_BUTTON_UI
+            gr.update(value="Add Task to Queue", variant="secondary"), # ADD_TASK_BUTTON
+            gr.update(visible=False) # CANCEL_EDIT_TASK_BUTTON
+        )
+
     all_ui_values_tuple = args_from_ui_controls_tuple[1:]
     # Use the workspace's default map as the single source of truth for UI keys.
     default_keys_map = workspace_manager.get_default_values_map()
     enum_keys = [K[key.upper()] for key in default_keys_map.keys()]
-    temp_params_from_ui = dict(zip(enum_keys, all_ui_values_tuple))
-    # This fixes a bug where editing a task with "Roll-off" would not restore the UI state correctly.
+    params_from_ui = dict(zip(enum_keys, all_ui_values_tuple))
     base_params_for_worker_dict = {
-        worker_key: temp_params_from_ui.get(ui_key) for ui_key, worker_key in shared_state_module.UI_TO_WORKER_PARAM_MAP.items()
+        worker_key: params_from_ui.get(ui_key) for ui_key, worker_key in shared_state_module.UI_TO_WORKER_PARAM_MAP.items()
     }
     img_np_data = np.array(input_image_pil)
+
     if editing_task_id is not None:
-        # Prepare updates for all UI controls to reset them to defaults after adding/updating
-        default_values_map = workspace_manager.get_default_values_map()
-        ui_updates_to_reset = [gr.update(value=default_values_map.get(key)) for key in shared_state_module.ALL_TASK_UI_KEYS]
-        img_display_update_to_reset = gr.update(value=None, visible=False)
-        file_input_update_to_reset = gr.update(visible=True, value=None)
-        clear_image_button_update_to_reset = gr.update(interactive=False, variant="secondary")
-        download_image_button_update_to_reset = gr.update(interactive=False, variant="secondary")
-        add_task_button_update_to_reset = gr.update(value="Add Task to Queue", variant="secondary")
-        cancel_edit_button_update_to_reset = gr.update(visible=False)
-        with shared_state_module.shared_state_instance.queue_lock:
-            for task in queue_state["queue"]:
-                if task["id"] == editing_task_id:
-                    task["params"] = {**base_params_for_worker_dict, 'input_image': img_np_data}
-                    task["status"] = "pending"
-                    gr.Info(f"Task {editing_task_id} updated.")
-                    break
-            queue_state["editing_task_id"] = None
+        queue_manager_instance.update_task(editing_task_id, base_params_for_worker_dict, img_np_data)
     else:
         queue_manager_instance.add_task(base_params_for_worker_dict, img_np_data)
     
     # After adding/updating, reset the UI to its default state
-    return cancel_edit_mode_action()
+    return cancel_edit_mode_action(state_dict_gr_state)
 
 
-def cancel_edit_mode_action():
+def cancel_edit_mode_action(state_dict_gr_state):
     queue_manager_instance.set_editing_task(None)
     default_values_map = workspace_manager.get_default_values_map()
     ui_updates = [gr.update(value=default_values_map.get(key)) for key in shared_state_module.ALL_TASK_UI_KEYS]
     return (
+        state_dict_gr_state,
         queue_helpers.update_queue_df_display(),
         gr.update(value=None, visible=False), # INPUT_IMAGE_DISPLAY_UI
         gr.update(visible=True, value=None), # IMAGE_FILE_INPUT_UI
@@ -100,37 +78,40 @@ def cancel_edit_mode_action():
     )
 
 
-def handle_queue_action_on_select(evt: gr.SelectData):
+def handle_queue_action_on_select(state_dict_gr_state, *args, evt: gr.SelectData):
     if evt.index is None or evt.value not in ["↑", "↓", "✖", "✎"]:
-        return [queue_helpers.update_queue_df_display()] + [gr.update()] * (len(shared_state_module.ALL_TASK_UI_KEYS) + 6)
+        return [state_dict_gr_state, queue_helpers.update_queue_df_display()] + [gr.update()] * (len(shared_state_module.ALL_TASK_UI_KEYS) + 8)
 
     row_index, _ = evt.index
     button_clicked = evt.value
+    queue_state = queue_manager_instance.get_state()
     queue = queue_state["queue"]
 
     if queue_state.get("processing", False) and row_index == 0:
         if button_clicked == "✖":
             gr.Info(f"Stopping and removing currently processing task {queue[0]['id']}...")
-            shared_state_module.shared_state_instance.interrupt_flag.set()
-            shared_state_module.shared_state_instance.abort_state['level'] = 2
-            # The task will be removed by process_task_queue_main_loop once it's aborted.
-            return [state_dict_gr_state, queue_helpers.update_queue_df_display(queue_state)] + [gr.update()] * (1 + 1 + len(shared_state_module.ALL_TASK_UI_KEYS) + 4)
+            # Send stop message to the agent
+            agent = ProcessingAgent()
+            agent.send({"type": "stop"})
+            # The agent will handle the task removal and UI update.
         elif button_clicked in ["↑", "↓"]: # Only prevent moving for processing task
             gr.Warning("Cannot modify a task that is currently processing.")
-            return [state_dict_gr_state, queue_helpers.update_queue_df_display(queue_state)] + [gr.update()] * (1 + 1 + len(shared_state_module.ALL_TASK_UI_KEYS) + 4)
+            return [state_dict_gr_state, queue_helpers.update_queue_df_display()] + [gr.update()] * (len(shared_state_module.ALL_TASK_UI_KEYS) + 8)
         # If button_clicked is "✎", we now allow it to fall through to the edit logic below
     if button_clicked == "↑":
-        queue_helpers.move_task_in_queue(state_dict_gr_state, 'up', row_index)
+        queue_manager_instance.move_task('up', row_index)
     elif button_clicked == "↓":
-        queue_helpers.move_task_in_queue(state_dict_gr_state, 'down', row_index)
+        queue_manager_instance.move_task('down', row_index)
     elif button_clicked == "✖":
-        _, removed_id = queue_helpers.remove_task_from_queue(state_dict_gr_state, row_index)
+        removed_id = queue_manager_instance.remove_task(row_index)
         if removed_id is not None and queue_state.get("editing_task_id") == removed_id:
             return cancel_edit_mode_action(state_dict_gr_state)
     elif button_clicked == "✎":
-        task_to_edit = queue[row_index]
+        task_to_edit = queue_manager_instance.get_task_to_edit(row_index)
+        if not task_to_edit:
+            return [state_dict_gr_state, queue_helpers.update_queue_df_display()] + [gr.update()] * (len(shared_state_module.ALL_TASK_UI_KEYS) + 8)
+
         params_to_load_to_ui = task_to_edit['params']
-        queue_state["editing_task_id"] = task_to_edit['id']
         gr.Info(f"Editing Task {task_to_edit['id']}.")
         img_np_from_task = params_to_load_to_ui.get('input_image')
         img_display_update = gr.update(value=Image.fromarray(img_np_from_task), visible=True) if isinstance(img_np_from_task, np.ndarray) else gr.update(value=None, visible=False) # type: ignore
@@ -274,7 +255,6 @@ def autosave_queue_on_exit_action(state_dict_gr_state_ref):
     except Exception as e:
         logger.error(f"Error during autosave: {e}", exc_info=True)
 
-def process_task_queue_main_loop(state_dict_gr_state, *lora_control_values): # noqa: C901
     """Main loop for processing tasks. It streams progress updates to the UI."""
     queue_state = queue_helpers.get_queue_state(state_dict_gr_state)
 

@@ -60,12 +60,15 @@ class QueueManager:
             self.state["editing_task_id"] = None
 
     def remove_task(self, task_index: int):
-        removed_task = None
+        removed_task_id = None
         with self.queue_lock:
             if 0 <= task_index < len(self.state["queue"]):
                 removed_task = self.state["queue"].pop(task_index)
-                gr.Info(f"Removed task {removed_task['id']}.")
-        return removed_task
+                removed_task_id = removed_task['id']
+                gr.Info(f"Removed task {removed_task_id}.")
+            else:
+                gr.Warning("Invalid index for removal.")
+        return removed_task_id
 
     def move_task(self, direction: str, task_index: int):
         with self.queue_lock:
@@ -97,30 +100,44 @@ class QueueManager:
         with self.queue_lock:
             if 0 <= task_index < len(self.state["queue"]):
                 task_to_edit = self.state["queue"][task_index]
-                # Return a copy to prevent accidental mutation
-                task_copy = {**task_to_edit, "params": task_to_edit["params"].copy()}
-                self.set_editing_task(task_copy['id'])
-                return task_copy
+                self.set_editing_task(task_to_edit['id'])
+                return task_to_edit
         return None
 
-    def get_pending_tasks(self):
+    def complete_task(self, task_id: int, status: str, final_path: str | None = None, error_msg: str | None = None):
         with self.queue_lock:
-            # Return a copy of the list of pending tasks for the agent to process
-            return [task for task in self.state["queue"] if task.get("status", "pending") == "pending"]
+            if self.state["queue"] and self.state["queue"][0]["id"] == task_id:
+                task = self.state["queue"][0]
+                task["status"] = status
+                if final_path: task["final_output_filename"] = final_path
+                if error_msg: task["error_message"] = error_msg
+                self.state["queue"].pop(0)
 
-    def update_task_status(self, task_id: int, status: str, final_path: str | None = None, error_msg: str | None = None):
+    def load_queue(self, new_queue: list, next_id: int):
+        """Safely replaces the current queue with a new one."""
         with self.queue_lock:
-            for task in self.state["queue"]:
-                if task["id"] == task_id:
-                    task["status"] = status
-                    if final_path: task["final_output_filename"] = final_path
-                    if error_msg: task["error_message"] = error_msg
-                    break
+            self.state["queue"] = new_queue
+            self.state["next_id"] = max(next_id, self.state.get("next_id", 1))
 
-    def remove_task_by_id(self, task_id: int):
+    def get_and_start_next_task(self):
+        """
+        Finds the first pending task at the top of the queue, marks it as 'processing',
+        and returns it. This is an atomic operation for the agent to use.
+        """
         with self.queue_lock:
-            self.state["queue"] = [task for task in self.state["queue"] if task["id"] != task_id]
+            if self.state["queue"]:
+                task = self.state["queue"][0]
+                if task.get("status", "pending") == "pending":
+                    task["status"] = "processing"
+                    if task.get("params", {}).get("seed") == -1:
+                        task["params"]["seed"] = np.random.randint(0, 2**32 - 1)
+                    return task.copy()  # Return a copy to avoid race conditions
+            return None
 
+    def has_pending_tasks(self):
+        """Checks if there are any tasks with 'pending' status."""
+        with self.queue_lock:
+            return any(task.get("status", "pending") == "pending" for task in self.state["queue"])
 
 # Singleton instance
 queue_manager_instance = QueueManager()
