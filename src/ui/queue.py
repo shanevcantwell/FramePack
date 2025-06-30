@@ -47,22 +47,8 @@ def add_or_update_task_in_queue(state_dict_gr_state, *args_from_ui_controls_tupl
     input_image_pil = args_from_ui_controls_tuple[0]
     if not input_image_pil:
         gr.Warning("Input image is required!")
-        # Even if input is missing, we must return all expected outputs to avoid Gradio errors.
-        # Reset UI to default state.
-        default_values_map = workspace_manager.get_default_values_map()
-        ui_updates_to_reset = [gr.update(value=default_values_map.get(key)) for key in shared_state_module.ALL_TASK_UI_KEYS]
-        img_display_update_to_reset = gr.update(value=None, visible=False)
-        file_input_update_to_reset = gr.update(visible=True, value=None)
-        clear_image_button_update_to_reset = gr.update(interactive=False, variant="secondary")
-        download_image_button_update_to_reset = gr.update(interactive=False, variant="secondary")
-        add_task_button_update_to_reset = gr.update(value="Add Task to Queue" if editing_task_id is None else "Update Task", variant="secondary")
-        cancel_edit_button_update_to_reset = gr.update(visible=editing_task_id is not None)
-        return (state_dict_gr_state, queue_helpers.update_queue_df_display(queue_state),
-                img_display_update_to_reset, file_input_update_to_reset,
-                *ui_updates_to_reset,
-                clear_image_button_update_to_reset, download_image_button_update_to_reset,
-                add_task_button_update_to_reset, cancel_edit_button_update_to_reset)
-    
+        return queue_helpers.update_queue_df_display()
+   
     all_ui_values_tuple = args_from_ui_controls_tuple[1:]
     # Use the workspace's default map as the single source of truth for UI keys.
     default_keys_map = workspace_manager.get_default_values_map()
@@ -92,74 +78,34 @@ def add_or_update_task_in_queue(state_dict_gr_state, *args_from_ui_controls_tupl
                     break
             queue_state["editing_task_id"] = None
     else:
-        # Prepare updates for all UI controls to reset them to defaults after adding/updating
-        default_values_map = workspace_manager.get_default_values_map()
-        ui_updates_to_reset = [gr.update(value=default_values_map.get(key)) for key in shared_state_module.ALL_TASK_UI_KEYS]
-        img_display_update_to_reset = gr.update(value=None, visible=False)
-        file_input_update_to_reset = gr.update(visible=True, value=None)
-        clear_image_button_update_to_reset = gr.update(interactive=False, variant="secondary")
-        download_image_button_update_to_reset = gr.update(interactive=False, variant="secondary")
-        add_task_button_update_to_reset = gr.update(value="Add Task to Queue", variant="secondary")
-        cancel_edit_button_update_to_reset = gr.update(visible=False)
-        with shared_state_module.shared_state_instance.queue_lock:
-            next_id = queue_state["next_id"]
-            task = {"id": next_id, "params": {**base_params_for_worker_dict, 'input_image': img_np_data}, "status": "pending"}
-            queue_state["queue"].append(task)
-            queue_state["next_id"] += 1
-            gr.Info("Added 1 task to the queue.")
+        queue_manager_instance.add_task(base_params_for_worker_dict, img_np_data)
     
-    return (
-        state_dict_gr_state,
-        queue_helpers.update_queue_df_display(queue_state),
-        img_display_update_to_reset,
-        file_input_update_to_reset,
-        *ui_updates_to_reset,
-        clear_image_button_update_to_reset,
-        download_image_button_update_to_reset,
-        add_task_button_update_to_reset,
-        cancel_edit_button_update_to_reset
-    )
+    # After adding/updating, reset the UI to its default state
+    return cancel_edit_mode_action()
 
 
-def cancel_edit_mode_action(state_dict_gr_state):
-    queue_state = queue_helpers.get_queue_state(state_dict_gr_state)
-    if queue_state.get("editing_task_id") is not None:
-        gr.Info("Edit cancelled. UI reverted to default settings.")
-        queue_state["editing_task_id"] = None
-
-    # Get default values for all UI controls
+def cancel_edit_mode_action():
+    queue_manager_instance.set_editing_task(None)
     default_values_map = workspace_manager.get_default_values_map()
     ui_updates = [gr.update(value=default_values_map.get(key)) for key in shared_state_module.ALL_TASK_UI_KEYS]
-
-    # Prepare updates for image display and its associated buttons
-    img_display_update = gr.update(value=None, visible=False) # Clear image display
-    file_input_update = gr.update(visible=True, value=None) # Show file uploader
-    clear_image_button_update = gr.update(interactive=False, variant="secondary")
-    download_image_button_update = gr.update(interactive=False, variant="secondary")
-
-    # Prepare updates for Add/Cancel Edit buttons
-    add_task_button_update = gr.update(value="Add Task to Queue", variant="secondary")
-    cancel_edit_button_update = gr.update(visible=False)
-
     return (
-        state_dict_gr_state,
-        queue_helpers.update_queue_df_display(queue_state),
-        img_display_update, # INPUT_IMAGE_DISPLAY_UI
-        file_input_update, # IMAGE_FILE_INPUT_UI
+        queue_helpers.update_queue_df_display(),
+        gr.update(value=None, visible=False), # INPUT_IMAGE_DISPLAY_UI
+        gr.update(visible=True, value=None), # IMAGE_FILE_INPUT_UI
         *ui_updates, # All other UI controls
-        clear_image_button_update, # CLEAR_IMAGE_BUTTON_UI
-        download_image_button_update, # DOWNLOAD_IMAGE_BUTTON_UI
-        add_task_button_update, # ADD_TASK_BUTTON
-        cancel_edit_button_update # CANCEL_EDIT_TASK_BUTTON
+        gr.update(interactive=False, variant="secondary"), # CLEAR_IMAGE_BUTTON_UI
+        gr.update(interactive=False, variant="secondary"), # DOWNLOAD_IMAGE_BUTTON_UI
+        gr.update(value="Add Task to Queue", variant="secondary"), # ADD_TASK_BUTTON
+        gr.update(visible=False) # CANCEL_EDIT_TASK_BUTTON
     )
 
 
-def handle_queue_action_on_select(evt: gr.SelectData, state_dict_gr_state, *ui_param_controls_tuple):
+def handle_queue_action_on_select(evt: gr.SelectData):
     if evt.index is None or evt.value not in ["↑", "↓", "✖", "✎"]:
-        return [state_dict_gr_state, queue_helpers.update_queue_df_display(queue_helpers.get_queue_state(state_dict_gr_state))] + [gr.update()] * (1 + 1 + len(shared_state_module.ALL_TASK_UI_KEYS) + 4)
+        return [queue_helpers.update_queue_df_display()] + [gr.update()] * (len(shared_state_module.ALL_TASK_UI_KEYS) + 6)
+
     row_index, _ = evt.index
     button_clicked = evt.value
-    queue_state = queue_helpers.get_queue_state(state_dict_gr_state)
     queue = queue_state["queue"]
 
     if queue_state.get("processing", False) and row_index == 0:
