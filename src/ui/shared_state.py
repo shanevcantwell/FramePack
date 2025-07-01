@@ -31,11 +31,6 @@ class SharedState:
 # Event to signal that a preview should be generated for the current segment.
         self.preview_request_flag: threading.Event = threading.Event()
 
-# State dictionary for the multi-level abort feature.
-# 'level' 0: No abort.
-# 'level' 2: Hard abort (triggered by the Stop Processing button).
-        self.abort_state: dict = {'level': 0, 'last_click_time': 0}
-
 # --- Model and Global State Containers ---
 # This dictionary will be populated at runtime by the main script after the models are loaded.
         self.models: dict = {}

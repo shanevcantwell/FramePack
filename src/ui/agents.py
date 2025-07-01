@@ -76,19 +76,19 @@ class ProcessingAgent(threading.Thread):
 
         self.is_processing = True
         queue_manager_instance.set_processing(True)
+        ui_update_queue.put(("processing_started", None))
         shared_state_module.shared_state_instance.interrupt_flag.clear()
-        shared_state_module.shared_state_instance.abort_state.update({"level": 0, "last_click_time": 0})
 
         # Run the actual processing in a separate thread to not block the agent's mailbox
         processing_thread = threading.Thread(target=self._processing_loop, args=(message,))
         processing_thread.start()
 
     def _handle_stop(self):
+        """Handles any stop request by setting the interrupt flag."""
         if not self.is_processing:
             return
         shared_state_module.shared_state_instance.interrupt_flag.set()
-        shared_state_module.shared_state_instance.abort_state['level'] = 2
-        logger.info("Stop signal sent to worker. Interrupt Level: 2.")
+        logger.info("Stop signal sent to worker. Worker will stop and finalize the current task.")
 
     def _processing_loop(self, start_message):
         lora_controls = start_message.get("lora_controls")
@@ -157,5 +157,5 @@ class ProcessingAgent(threading.Thread):
             self.is_processing = False
             queue_manager_instance.set_processing(False)
             shared_state_module.shared_state_instance.interrupt_flag.clear()
-            shared_state_module.shared_state_instance.abort_state.update({"level": 0, "last_click_time": 0})
+            shared_state_module.shared_state_instance.stop_requested_flag.clear()
             ui_update_queue.put(("queue_finished", None))

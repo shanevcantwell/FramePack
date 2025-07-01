@@ -45,7 +45,7 @@ def add_or_update_task_in_queue(state_dict_gr_state, *args_from_ui_controls_tupl
     all_ui_values_tuple = args_from_ui_controls_tuple[1:]
     # Use the workspace's default map as the single source of truth for UI keys.
     default_keys_map = workspace_manager.get_default_values_map()
-    enum_keys = [K[key.upper()] for key in default_keys_map.keys()]
+    enum_keys = list(default_keys_map.keys())
     params_from_ui = dict(zip(enum_keys, all_ui_values_tuple))
     base_params_for_worker_dict = {
         worker_key: params_from_ui.get(ui_key) for ui_key, worker_key in shared_state_module.UI_TO_WORKER_PARAM_MAP.items()
@@ -54,16 +54,30 @@ def add_or_update_task_in_queue(state_dict_gr_state, *args_from_ui_controls_tupl
 
     if editing_task_id is not None:
         queue_manager_instance.update_task(editing_task_id, base_params_for_worker_dict, img_np_data)
+        # After updating a task, exit edit mode, which correctly resets the UI.
+        return cancel_edit_mode_action(state_dict_gr_state)
     else:
         queue_manager_instance.add_task(base_params_for_worker_dict, img_np_data)
-    
-    # After adding/updating, reset the UI to its default state
-    return cancel_edit_mode_action(state_dict_gr_state)
+        # When adding a new task, only update the queue display and leave UI controls untouched.
+        # The number of outputs for this event is 29. We return state and the queue dataframe,
+        # so we need 27 gr.update() calls to match the output signature without changing values.
+        return [state_dict_gr_state, queue_helpers.update_queue_df_display()] + [gr.update()] * 27
 
 
 def process_task_queue_and_listen(state_dict_gr_state, *lora_control_values):
-    """Starts the ProcessingAgent and listens for UI updates."""
+    """Starts the ProcessingAgent, listens for UI updates, and handles stop requests."""
     agent = ProcessingAgent()
+
+    # If processing is already active, this button click is a "stop" request.
+    if queue_manager_instance.get_state().get("processing", False):
+        # Set the flag for immediate UI feedback via update_button_states
+        shared_state_module.shared_state_instance.stop_requested_flag.set()
+        agent.send({"type": "stop"})
+        # Return minimal updates. The .then() call in the switchboard will call
+        # update_button_states, which will see the flag and update the UI correctly.
+        return [state_dict_gr_state] + [gr.update()] * 8
+
+    # If not processing, this is a "start" request.
     agent.send({
         "type": "start",
         "lora_controls": lora_control_values
@@ -75,7 +89,18 @@ def process_task_queue_and_listen(state_dict_gr_state, *lora_control_values):
             # Block until an update is available from the agent's UI queue.
             flag, data = ui_update_queue.get(timeout=1.0)
 
-            if flag == "progress":
+            if flag == "processing_started":
+                # This is the first signal from the agent that it has started.
+                # Update the UI to the "processing" state.
+                yield (
+                    state_dict_gr_state, gr.update(), gr.update(), gr.update(),
+                    gr.update(value="Queue processing started..."), # Progress description
+                    gr.update(value=None, visible=True), # Progress bar
+                    gr.update(interactive=True, value="⏹️ Stop Processing", variant="stop"), # PROCESS_QUEUE_BUTTON
+                    gr.update(interactive=True), # CREATE_PREVIEW_BUTTON
+                    gr.update(interactive=False) # CLEAR_QUEUE_BUTTON_UI
+                )
+            elif flag == "progress":
                 # Unpack data: task_id, preview_np, desc, html
                 _, preview_np, desc, html = data
                 yield (state_dict_gr_state, gr.update(), gr.update(), gr.update(value=preview_np), desc, html, gr.update(), gr.update(), gr.update())
@@ -132,7 +157,8 @@ def cancel_edit_mode_action(state_dict_gr_state):
 
 def handle_queue_action_on_select(state_dict_gr_state, *args, evt: gr.SelectData):
     if evt.index is None or evt.value not in ["↑", "↓", "✖", "✎"]:
-        return [state_dict_gr_state, queue_helpers.update_queue_df_display()] + [gr.update()] * (len(shared_state_module.ALL_TASK_UI_KEYS) + 8)
+        # The total number of outputs is 29. We are returning 2, so we need 27 gr.update()s.
+        return [state_dict_gr_state, queue_helpers.update_queue_df_display()] + [gr.update()] * 27
 
     row_index, _ = evt.index
     button_clicked = evt.value
@@ -143,12 +169,11 @@ def handle_queue_action_on_select(state_dict_gr_state, *args, evt: gr.SelectData
         if button_clicked == "✖":
             gr.Info(f"Stopping and removing currently processing task {queue[0]['id']}...")
             # Send stop message to the agent
-            agent = ProcessingAgent()
-            agent.send({"type": "stop"})
+            ProcessingAgent().send({"type": "stop"})
             # The agent will handle the task removal and UI update.
         elif button_clicked in ["↑", "↓"]: # Only prevent moving for processing task
             gr.Warning("Cannot modify a task that is currently processing.")
-            return [state_dict_gr_state, queue_helpers.update_queue_df_display()] + [gr.update()] * (len(shared_state_module.ALL_TASK_UI_KEYS) + 8)
+            return [state_dict_gr_state, queue_helpers.update_queue_df_display()] + [gr.update()] * 27
         # If button_clicked is "✎", we now allow it to fall through to the edit logic below
     if button_clicked == "↑":
         queue_manager_instance.move_task('up', row_index)
@@ -192,18 +217,17 @@ def clear_task_queue_action(state_dict_gr_state):
 
 def request_preview_generation_action(state_dict_gr_state):
     """
-    Sends a graceful stop signal to the current worker to generate a preview video,
-    but allows the main queue processing to continue to the next task.
+    Sets a flag for the backend worker to generate and save a preview of the
+    current segment when it completes, without interrupting the overall queue processing.
     """
-    queue_state = queue_helpers.get_queue_state(state_dict_gr_state)
-    if not queue_state.get("processing", False):
+    if not queue_manager_instance.get_state().get("processing", False):
         gr.Info("Nothing is currently processing.")
         return state_dict_gr_state
-    
+
     # Set the dedicated preview request flag. The worker will check this after each segment.
     shared_state_module.shared_state_instance.preview_request_flag.set()
     gr.Info("Preview requested. A video of the current segment will be generated when it completes.")
-    
+
     return state_dict_gr_state
 
 def save_queue_to_zip(state_dict_gr_state):
