@@ -165,8 +165,7 @@ def cancel_edit_mode_action(from_ui=True):
         # This is for when called internally, like after updating a task.
         # It matches the output signature of the add/update task event.
         return cancel_edit_mode_action(from_ui=True)
-
-
+    
 
 def handle_queue_action_on_select(*args, evt: gr.SelectData):
     # The full list of UI components is passed in *args, but we don't need them here.
@@ -209,8 +208,12 @@ def handle_queue_action_on_select(*args, evt: gr.SelectData):
         img_display_update = gr.update(value=Image.fromarray(img_np_from_task), visible=True) if isinstance(img_np_from_task, np.ndarray) else gr.update(value=None, visible=False) # type: ignore
         file_input_update = gr.update(visible=False) # Hide the uploader when showing an image
         ui_updates = [gr.update(value=params_to_load_to_ui.get(shared_state_module.UI_TO_WORKER_PARAM_MAP.get(key), None)) for key in shared_state_module.ALL_TASK_UI_KEYS]
-    num_outputs = len(shared_state_module.ALL_TASK_UI_KEYS) + 8
-    queue = queue_state.get("queue", [])
+
+
+def save_queue_to_zip():
+    """Saves the current queue to a zip file."""
+    logger.info("Attempting to save queue to zip...")
+    queue = queue_manager_instance.get_state().get("queue")
     if not queue:
         gr.Info("Queue is empty. Nothing to save.")
         return [gr.update(), None]
@@ -248,105 +251,4 @@ def load_queue_from_zip(zip_file_or_path):
         filepath = zip_file_or_path.name
     if not filepath:
         logger.info("No valid queue file found to load.")
-        return [gr.update(), queue_helpers.update_queue_df_display()]
-    newly_loaded_queue, max_id_in_file, loaded_image_count, error_messages = [], 0, 0, []
-    try:
-        with tempfile.TemporaryDirectory() as tmpdir_extract:
-            with zipfile.ZipFile(filepath, 'r') as zf:
-                if shared_state_module.QUEUE_STATE_JSON_IN_ZIP not in zf.namelist():
-                    raise ValueError(f"'{shared_state_module.QUEUE_STATE_JSON_IN_ZIP}' not found in zip")
-                zf.extractall(tmpdir_extract)
-            manifest_path = os.path.join(tmpdir_extract, shared_state_module.QUEUE_STATE_JSON_IN_ZIP)
-            with open(manifest_path, 'r', encoding='utf-8') as f:
-                loaded_manifest = json.load(f)
-            for task_data in loaded_manifest:
-                params = task_data.get('params', {})
-                task_id = task_data.get('id', 0)
-                max_id_in_file = max(max_id_in_file, task_id)
-                image_ref = task_data.get('image_ref')
-                img_np = None
-                if image_ref:
-                    img_path_in_extract = os.path.join(tmpdir_extract, image_ref)
-                    if os.path.exists(img_path_in_extract):
-                        try:
-                            img_np = np.array(Image.open(img_path_in_extract))
-                            loaded_image_count += 1
-                        except Exception as img_e:
-                            error_messages.append(f"Err loading img for task {task_id}: {img_e}")
-                    else:
-                        error_messages.append(f"Missing img file for task {task_id}: {image_ref}")
-                params['input_image'] = img_np
-                newly_loaded_queue.append({"id": task_id, "params": params, "status": "pending"})
-        
-        queue_manager_instance.load_queue(new
-        queue_helpers.update_queue_df_display(),
-        gr.update(value=None, visible=False), # INPUT_IMAGE_DISPLAY_UI
-        gr.update(visible=True, value=None), # IMAGE_FILE_INPUT_UI
-        *ui_updates, # All other UI controls
-        gr.update(interactive=False, variant="secondary"), # CLEAR_IMAGE_BUTTON_UI
-        gr.update(interactive=False, variant="secondary"), # DOWNLOAD_IMAGE_BUTTON_UI
-        gr.update(value="Add Task to Queue", variant="secondary"), # ADD_TASK_BUTTON
-        gr.update(visible=False) # CANCEL_EDIT_TASK_BUTTON
-    ]
 
-
-def handle_queue_action_on_select(*args, evt: gr.SelectData):
-    # The full list of UI components is passed in *args, but we don't need them here.
-    # We only need the event data.
-    if evt.index is None or evt.value not in ["↑", "↓", "✖", "✎"]:
-        num_outputs = len(shared_state_module.ALL_TASK_UI_KEYS) + 8
-        return [gr.update()] * num_outputs
-
-    row_index, _ = evt.index
-    button_clicked = evt.value
-    queue_state = queue_manager_instance.get_state()
-    queue = queue_state["queue"]
-
-    is_processing_task = queue_state.get("processing", False) and row_index == 0
-
-    if is_processing_task and button_clicked in ["↑", "↓"]:
-        gr.Warning("Cannot modify a task that is currently processing.")
-        num_outputs = len(shared_state_module.ALL_TASK_UI_KEYS) + 8
-        return [gr.update()] * num_outputs
-    if button_clicked == "↑":
-        queue_manager_instance.move_task('up', row_index)
-    elif button_clicked == "↓":
-        queue_manager_instance.move_task('down', row_index)
-    elif button_clicked == "✖":
-        if is_processing_task:
-            gr.Info(f"Stopping and removing currently processing task {queue[0]['id']}...")
-            ProcessingAgent().send({"type": "stop"})
-            # The agent will handle the task status change. We just update the display.
-        else:
-            removed_id = queue_manager_instance.remove_task(row_index)
-            if removed_id is not None and queue_state.get("editing_task_id") == removed_id:
-                # If we deleted the task we were editing, cancel edit mode.
-                return cancel_edit_mode_action()
-    elif button_clicked == "✎":
-        task_to_edit = queue_manager_instance.get_task_to_edit(row_index)
-        if not task_to_edit:
-            num_outputs = len(shared_state_module.ALL_TASK_UI_KEYS) + 8
-            return [gr.update()] * num_outputs
-
-        params_to_load_to_ui = task_to_edit['params']
-        img_np_from_task = params_to_load_to_ui.get('input_image')
-        img_display_update = gr.update(value=Image.fromarray(img_np_from_task), visible=True) if isinstance(img_np_from_task, np.ndarray) else gr.update(value=None, visible=False) # type: ignore
-        file_input_update = gr.update(visible=False) # Hide the uploader when showing an image
-        ui_updates = [gr.update(value=params_to_load_to_ui.get(shared_state_module.UI_TO_WORKER_PARAM_MAP.get(key), None)) for key in shared_state_module.ALL_TASK_UI_KEYS]
-        queue_manager_instance.load_queue(newly_loaded_queue, max_id_in_file + 1)
-        gr.Info(f"Loaded {len(newly_loaded_queue)} tasks ({loaded_image_count} images).")
-        if error_messages: gr.Warning(" ".join(error_messages))
-    except Exception as e:
-        gr.Warning(f"Failed to load queue from {os.path.basename(filepath)}: {e}")
-        logger.error(f"Error loading queue: {e}", exc_info=True)
-    return [
-        gr.update(),
-        queue_helpers.update_queue_df_display(),
-        gr.update(value=None, visible=False),  # INPUT_IMAGE_DISPLAY_UI
-        gr.update(visible=True, value=None),  # IMAGE_FILE_INPUT_UI
-        *[gr.update() for _ in shared_state_module.ALL_TASK_UI_KEYS],  # All other UI controls
-        gr.update(interactive=False, variant="secondary"),  # CLEAR_IMAGE_BUTTON_UI
-        gr.update(interactive=False, variant="secondary"),  # DOWNLOAD_IMAGE_BUTTON_UI
-        gr.update(value="Add Task to Queue", variant="secondary"),  # ADD_TASK_BUTTON
-        gr.update(visible=False),  # CANCEL_EDIT_TASK_BUTTON
-    ]

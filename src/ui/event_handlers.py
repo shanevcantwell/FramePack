@@ -9,7 +9,7 @@ from . import metadata as metadata_manager
 from . import shared_state as shared_state_module
 from . import workspace as workspace_manager
 from .queue_manager import queue_manager_instance
-from .queue import autosave_queue_on_exit_action
+from .queue_actions import autosave_queue_on_exit_action
 logger = logging.getLogger(__name__)
 
 

@@ -9,7 +9,8 @@ from . import (
     lora as lora_manager,
     workspace as workspace_manager,
     metadata as metadata_manager,
-    queue as queue_manager,
+    queue_actions as queue_manager_actions,
+    queue_processing as queue_manager_processing,
     event_handlers,
     shared_state as shared_state_module # Import module for access to instance
 )
@@ -183,7 +184,7 @@ def _wire_queue_events(components: dict):
         components[K.CURRENT_TASK_PROGRESS_BAR_UI], components[K.PROCESS_QUEUE_BUTTON], components[K.CREATE_PREVIEW_BUTTON], components[K.CLEAR_QUEUE_BUTTON_UI]
     ]
     (components[K.ADD_TASK_BUTTON].click(
-        fn=queue_manager.add_or_update_task_in_queue, inputs=[components[K.APP_STATE]] + task_defining_ui_inputs, outputs=add_task_outputs
+        fn=queue_manager_actions.add_or_update_task_in_queue, inputs=[components[K.APP_STATE]] + task_defining_ui_inputs, outputs=add_task_outputs
     ).then(
         fn=event_handlers.update_button_states, inputs=[components[K.APP_STATE], components[K.INPUT_IMAGE_DISPLAY_UI], components[K.QUEUE_DF_DISPLAY_UI]],
         outputs=button_state_outputs
@@ -193,23 +194,23 @@ def _wire_queue_events(components: dict):
         outputs=[components[K.TOTAL_SEGMENTS_DISPLAY_UI]]
     ))
     (components[K.PROCESS_QUEUE_BUTTON].click(
-        fn=queue_manager.process_task_queue_and_listen, inputs=[components[K.APP_STATE]] + lora_ui_controls, outputs=process_q_outputs      
+        fn=queue_manager_processing.process_task_queue_and_listen, inputs=[components[K.APP_STATE]] + lora_ui_controls, outputs=process_q_outputs      
     ).then(
         fn=event_handlers.update_button_states, inputs=[components[K.APP_STATE], components[K.INPUT_IMAGE_DISPLAY_UI], components[K.QUEUE_DF_DISPLAY_UI]],
         outputs=button_state_outputs
     ))
     (components[K.CREATE_PREVIEW_BUTTON].click(
-        fn=queue_manager.request_preview_generation_action, inputs=[components[K.APP_STATE]], outputs=[components[K.APP_STATE]]
+                fn=queue_manager_processing.request_preview_generation_action, inputs=[components[K.APP_STATE]], outputs=[components[K.APP_STATE]]
     ).then(
         fn=event_handlers.update_button_states, inputs=[components[K.APP_STATE], components[K.INPUT_IMAGE_DISPLAY_UI], components[K.QUEUE_DF_DISPLAY_UI]],
         outputs=button_state_outputs
     ))
-    (components[K.CANCEL_EDIT_TASK_BUTTON].click(
-        fn=queue_manager.cancel_edit_mode_action, inputs=[components[K.APP_STATE]], outputs=cancel_edit_outputs
-    ).then(
-        fn=event_handlers.update_button_states, inputs=[components[K.APP_STATE], components[K.INPUT_IMAGE_DISPLAY_UI], components[K.QUEUE_DF_DISPLAY_UI]],
-        outputs=button_state_outputs
-    ))
+    (components[K.CREATE_PREVIEW_BUTTON].click(        
+        fn=queue_manager_processing.request_preview_generation_action, inputs=[components[K.APP_STATE]], outputs=[components[K.APP_STATE]]    
+    ).then(    
+        fn=event_handlers.update_button_states, inputs=[components[K.APP_STATE], components[K.INPUT_IMAGE_DISPLAY_UI], components[K.QUEUE_DF_DISPLAY_UI]],    
+        outputs=button_state_outputs    
+    ))    
     (components[K.CANCEL_EDIT_TASK_BUTTON].click(
         fn=queue_manager.cancel_edit_mode_action, inputs=[components[K.APP_STATE]], outputs=cancel_edit_outputs
     ).then( # NEW: Update segment display after cancelling edit
@@ -218,7 +219,7 @@ def _wire_queue_events(components: dict):
         outputs=[components[K.TOTAL_SEGMENTS_DISPLAY_UI]]
     ))
     (components[K.CLEAR_QUEUE_BUTTON_UI].click(
-        fn=queue_manager.clear_task_queue_action, inputs=[components[K.APP_STATE]], outputs=[components[K.APP_STATE], components[K.QUEUE_DF_DISPLAY_UI]]
+        fn=queue_manager_actions.clear_task_queue_action, inputs=[components[K.APP_STATE]], outputs=[components[K.APP_STATE], components[K.QUEUE_DF_DISPLAY_UI]]
     ).then(
         fn=event_handlers.update_button_states, inputs=[components[K.APP_STATE], components[K.INPUT_IMAGE_DISPLAY_UI], components[K.QUEUE_DF_DISPLAY_UI]],
         outputs=button_state_outputs
@@ -226,20 +227,20 @@ def _wire_queue_events(components: dict):
     # Re-wired for one-click download. The button click prepares the file and outputs it
     # to a hidden component, which is then "clicked" by the JS to trigger the download.
     (components[K.SAVE_QUEUE_BUTTON_UI].click(
-        fn=queue_manager.save_queue_to_zip,
+        fn=queue_manager_actions.save_queue_to_zip,
         inputs=[components[K.APP_STATE]],
         outputs=[components[K.APP_STATE], components[K.QUEUE_DOWNLOADER_UI]],
         show_progress=True
     ).then(
-        fn=None, inputs=None, outputs=None,
+        fn=event_handlers.update_button_states, inputs=[components[K.APP_STATE], components[K.INPUT_IMAGE_DISPLAY_UI], components[K.QUEUE_DF_DISPLAY_UI]], outputs=button_state_outputs,
         js="() => { document.getElementById('queue_downloader_hidden_file').querySelector('a[download]').click(); }"
     ))
     (components[K.LOAD_QUEUE_BUTTON_UI].upload(
-        fn=queue_manager.load_queue_from_zip, inputs=[components[K.APP_STATE], components[K.LOAD_QUEUE_BUTTON_UI]], outputs=[components[K.APP_STATE], components[K.QUEUE_DF_DISPLAY_UI]]
+        fn=queue_manager_actions.load_queue_from_zip, inputs=[components[K.APP_STATE], components[K.LOAD_QUEUE_BUTTON_UI]], outputs=[components[K.APP_STATE], components[K.QUEUE_DF_DISPLAY_UI]]
     ).then(
         fn=event_handlers.update_button_states, inputs=[components[K.APP_STATE], components[K.INPUT_IMAGE_DISPLAY_UI], components[K.QUEUE_DF_DISPLAY_UI]], outputs=button_state_outputs
     ))
-    (components[K.QUEUE_DF_DISPLAY_UI].select(
+    components[K.QUEUE_DF_DISPLAY_UI].select(
         fn=queue_manager.handle_queue_action_on_select, inputs=[components[K.APP_STATE]] + task_defining_ui_inputs, outputs=select_q_outputs
     ).then(
         fn=event_handlers.update_button_states, inputs=[components[K.APP_STATE], components[K.INPUT_IMAGE_DISPLAY_UI], components[K.QUEUE_DF_DISPLAY_UI]],
@@ -249,7 +250,6 @@ def _wire_queue_events(components: dict):
         inputs=[components[K.TOTAL_SECOND_LENGTH_UI], components[K.LATENT_WINDOW_SIZE_UI], components[K.FPS_UI]],
         outputs=[components[K.TOTAL_SEGMENTS_DISPLAY_UI]]
     ))
-
 def _wire_misc_control_events(components: dict):
     """Wires up other miscellaneous UI controls."""
 
@@ -336,6 +336,7 @@ def _wire_app_startup_events(components: dict):
         inputs=[components[K.APP_STATE], components[K.INPUT_IMAGE_DISPLAY_UI], components[K.QUEUE_DF_DISPLAY_UI]],
         outputs=button_state_outputs
     ))
+]
 
 def wire_all_events(components: dict):
     """Main function to orchestrate the wiring of all UI events."""
@@ -345,7 +346,9 @@ def wire_all_events(components: dict):
         _wire_lora_events(components)
         _wire_workspace_events(components)
         _wire_image_and_metadata_events(components)
-        _wire_queue_events(components)
+        _wire_# ui/queue.py (temporary for testing)
+        # This file is intentionally empty during the split testing process.
+        events(components)
         _wire_misc_control_events(components)
         _wire_app_startup_events(components)
         logger.info("All UI events wired.")
