@@ -193,6 +193,7 @@ run_goan.bat
 run_goan.sh
 src/core/generation_core.bak.py
 dossier*.txt
+5002_run.sh
 goan.code-workspace
 goan.log.*
 *.bak.py

@@ -8,23 +8,9 @@ import base64
 import io
 import logging
 
-from .shared_state import shared_state_instance
+from .queue_manager import queue_manager_instance
 
 logger = logging.getLogger(__name__)
-
-def get_queue_state(state_dict_gr_state):
-    """
-    Safely retrieves the queue state dictionary from the main application state.
-    Initializes a default queue state if it doesn't exist.
-    """
-    if "queue_state" not in state_dict_gr_state:
-        state_dict_gr_state["queue_state"] = {
-            "queue": [],
-            "next_id": 1,
-            "processing": False,
-            "editing_task_id": None
-        }
-    return state_dict_gr_state["queue_state"]
 
 def np_to_base64_uri(np_array_or_tuple, format="png"):
     """Converts a NumPy array to a base64 data URI for embedding in HTML/Markdown."""
@@ -51,8 +37,9 @@ def np_to_base64_uri(np_array_or_tuple, format="png"):
         logger.error(f"Error converting NumPy to base64: {e}", exc_info=True)
         return None
 
-def update_queue_df_display(queue_state):
+def update_queue_df_display():
     """Formats the current queue state into a Gradio DataFrame update object for display."""
+    queue_state = queue_manager_instance.get_state()
     queue = queue_state.get("queue", [])
     data = []
     processing = queue_state.get("processing", False)
@@ -89,33 +76,5 @@ def update_queue_df_display(queue_state):
             prompt_cell, f"{params.get('total_second_length', 0):.1f}s", img_md, "↑", "↓" # Remaining columns
         ])
         
-    return gr.update(value=data)
-
-def move_task_in_queue(state_dict_gr_state, direction: str, task_index: int):
-    """Moves a task at a given index up or down in the queue."""
-    queue_state = get_queue_state(state_dict_gr_state)
-    queue = queue_state["queue"]
-    
-    with shared_state_instance.queue_lock:
-        if direction == 'up' and task_index > 0:
-            queue[task_index], queue[task_index-1] = queue[task_index-1], queue[task_index]
-        elif direction == 'down' and task_index < len(queue) - 1:
-            queue[task_index], queue[task_index+1] = queue[task_index+1], queue[task_index]
-            
-    return state_dict_gr_state
-
-def remove_task_from_queue(state_dict_gr_state, task_index: int):
-    """Removes a task at a given index from the queue."""
-    queue_state = get_queue_state(state_dict_gr_state)
-    queue = queue_state["queue"]
-    removed_task_id = None
-    
-    with shared_state_instance.queue_lock:
-        if 0 <= task_index < len(queue):
-            removed_task = queue.pop(task_index)
-            removed_task_id = removed_task['id']
-            gr.Info(f"Removed task {removed_task_id}.")
-        else:
-            gr.Warning("Invalid index for removal.")
-            
-    return state_dict_gr_state, removed_task_id
+    # Return an empty DataFrame with the correct headers if the queue is empty
+    return gr.update(value=data) if data else gr.update(value=[], headers=["ID", "Status", "✖", "✎", "Prompt", "Length", "Input", "↑", "↓"], datatype=["number","markdown","markdown","markdown","markdown","str","markdown","markdown","markdown"], col_count=(9,"fixed"))

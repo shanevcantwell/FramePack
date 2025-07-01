@@ -8,16 +8,16 @@ import logging
 from . import metadata as metadata_manager
 from . import shared_state as shared_state_module
 from . import workspace as workspace_manager
-from .queue_helpers import get_queue_state
-from .queue import autosave_queue_on_exit_action
+from . import queue as queue_actions # Use queue.py as the source for actions
+from .enums import ComponentKey as K
+from .queue_manager import queue_manager_instance
 logger = logging.getLogger(__name__)
 
 
 def safe_shutdown_action(app_state, *ui_values):
     """Performs all necessary save operations to prepare the app for a clean shutdown."""
     logger.info("Performing safe shutdown saves...")
-    # This call to autosave is correct as it comes from queue.py
-    autosave_queue_on_exit_action(app_state)
+    queue_actions.autosave_queue_on_exit_action()
     workspace_manager.save_ui_and_image_for_refresh(*ui_values)
     gr.Info("Queue and UI state saved. It is now safe to close the terminal.")
 
@@ -100,103 +100,83 @@ def prepare_image_for_download(pil_image, app_state, ui_keys, *creative_values):
         gr.Info("Image with current settings prepared for download.")
         return gr.update(value=tmp_file.name)
 
+# Define the button keys in a fixed order for consistent output.
+BUTTON_KEYS = [
+    K.ADD_TASK_BUTTON,
+    K.PROCESS_QUEUE_BUTTON,
+    K.CREATE_PREVIEW_BUTTON,
+    K.CLEAR_IMAGE_BUTTON_UI,
+    K.DOWNLOAD_IMAGE_BUTTON_UI,
+    K.SAVE_QUEUE_BUTTON_UI,
+    K.CLEAR_QUEUE_BUTTON_UI,
+]
+
+def get_button_state_outputs(components: dict) -> list:
+    """Returns the list of button components for state updates."""
+    return [components[key] for key in BUTTON_KEYS]
+
 def update_button_states(app_state, input_image_pil, queue_df_data):
     """
-    Updates the interactive and variant states of all major control buttons
-    based on the current application state. This function is the single source of
-    truth for button states and is called after any action that might change them.
+    Updates button states based on a declarative rules engine. This function
+    is the single source of truth for the state of all major control buttons.
     """
-    queue_state = get_queue_state(app_state)
-
-    # First, check for the stop_requested state for immediate feedback.
-    if shared_state_module.shared_state_instance.stop_requested_flag.is_set():
-        return (
-            gr.update(interactive=False),  # ADD_TASK_BUTTON
-            gr.update(interactive=False, value="Stopping...", variant="stop"), # PROCESS_QUEUE_BUTTON
-            gr.update(interactive=False),  # CREATE_PREVIEW_BUTTON
-            gr.update(interactive=False),  # CLEAR_IMAGE_BUTTON_UI
-            gr.update(interactive=False),  # DOWNLOAD_IMAGE_BUTTON_UI
-            gr.update(interactive=False),  # SAVE_QUEUE_BUTTON_UI
-            gr.update(interactive=False),  # CLEAR_QUEUE_BUTTON_UI
-        )
-
+    # 1. Derive the current application state from the inputs.
+    queue_state = queue_manager_instance.get_state()
     is_editing = queue_state.get("editing_task_id") is not None
     is_processing = queue_state.get("processing", False)
+    is_editing_processing_task = is_editing and is_processing and queue_state.get("queue") and queue_state["editing_task_id"] == queue_state["queue"][0]["id"]
+    state = {
+        'stop_requested': shared_state_module.shared_state_instance.stop_requested_flag.is_set(),
+        'is_editing': is_editing,
+        'is_processing': is_processing,
+        'is_editing_processing_task': is_editing_processing_task,
+        'has_image': input_image_pil is not None,
+        'queue_has_tasks': bool(queue_state.get("queue", [])),
+        'has_pending_tasks': any(task.get("status", "pending") == "pending" for task in queue_state.get("queue", [])),
+        'preview_requested': shared_state_module.shared_state_instance.preview_request_flag.is_set(),
+    }
 
-    # If we are in edit mode, the logic is simpler and overrides most other states.
-    if is_editing:
-        # Check if the task being edited is the one currently processing.
-        # The processing task is always at index 0.
-        process_queue_text = "▶️ Process Queue"
-        process_queue_variant = "primary"
-        process_queue_interactive = False
+    # 2. Define the rules as a list of condition->updates mappings.
+    # The first rule with a condition that returns True will be used.
+    rules = [
+        {'condition': lambda s: s['stop_requested'], 'get_updates': lambda s: {
+            K.PROCESS_QUEUE_BUTTON: gr.update(interactive=False, value="Stopping...", variant="stop"),
+            K.ADD_TASK_BUTTON: gr.update(interactive=False), K.CREATE_PREVIEW_BUTTON: gr.update(interactive=False),
+            K.CLEAR_IMAGE_BUTTON_UI: gr.update(interactive=False), K.DOWNLOAD_IMAGE_BUTTON_UI: gr.update(interactive=False),
+            K.SAVE_QUEUE_BUTTON_UI: gr.update(interactive=False), K.CLEAR_QUEUE_BUTTON_UI: gr.update(interactive=False),
+        }},
+        {'condition': lambda s: s['is_editing'], 'get_updates': lambda s: {
+            K.ADD_TASK_BUTTON: gr.update(interactive=not s['is_editing_processing_task'], variant="primary"),
+            K.PROCESS_QUEUE_BUTTON: gr.update(interactive=False, value="▶️ Process Queue", variant="secondary"),
+            K.CREATE_PREVIEW_BUTTON: gr.update(interactive=False, variant="secondary"),
+            K.CLEAR_IMAGE_BUTTON_UI: gr.update(interactive=False, variant="secondary"), K.DOWNLOAD_IMAGE_BUTTON_UI: gr.update(interactive=False, variant="secondary"),
+            K.SAVE_QUEUE_BUTTON_UI: gr.update(interactive=False, variant="secondary"), K.CLEAR_QUEUE_BUTTON_UI: gr.update(interactive=False, variant="secondary"),
+        }},
+        {'condition': lambda s: s['is_processing'], 'get_updates': lambda s: {
+            K.PROCESS_QUEUE_BUTTON: gr.update(interactive=True, value="⏹️ Stop Processing", variant="stop"),
+            K.CREATE_PREVIEW_BUTTON: gr.update(interactive=not s['preview_requested'], variant="primary" if not s['preview_requested'] else "secondary"),
+            K.CLEAR_QUEUE_BUTTON_UI: gr.update(interactive=s['has_pending_tasks'], variant="stop" if s['has_pending_tasks'] else "secondary"),
+            K.ADD_TASK_BUTTON: gr.update(interactive=False, variant="secondary"), K.CLEAR_IMAGE_BUTTON_UI: gr.update(interactive=False, variant="secondary"),
+            K.DOWNLOAD_IMAGE_BUTTON_UI: gr.update(interactive=False, variant="secondary"), K.SAVE_QUEUE_BUTTON_UI: gr.update(interactive=False, variant="secondary"),
+        }},
+        # Default rule for idle state.
+        {'condition': lambda s: True, 'get_updates': lambda s: {
+            K.ADD_TASK_BUTTON: gr.update(interactive=s['has_image'], variant="primary" if s['has_image'] else "secondary"),
+            K.PROCESS_QUEUE_BUTTON: gr.update(interactive=s['queue_has_tasks'], value="▶️ Process Queue", variant="primary"),
+            K.CREATE_PREVIEW_BUTTON: gr.update(interactive=False, variant="secondary"),
+            K.CLEAR_IMAGE_BUTTON_UI: gr.update(interactive=s['has_image'], variant="secondary"),
+            K.DOWNLOAD_IMAGE_BUTTON_UI: gr.update(interactive=s['has_image'], variant="secondary"),
+            K.SAVE_QUEUE_BUTTON_UI: gr.update(interactive=s['queue_has_tasks'], variant="primary"),
+            K.CLEAR_QUEUE_BUTTON_UI: gr.update(interactive=s['has_pending_tasks'], variant="stop" if s['has_pending_tasks'] else "secondary"),
+        }},
+    ]
 
-        is_editing_processing_task = False
-        if is_processing and queue_state.get("queue"):
-            if queue_state["editing_task_id"] == queue_state["queue"][0]["id"]:
-                is_editing_processing_task = True
-        
-        # The "Update Task" button should be disabled if we're editing the processing task,
-        # as its settings cannot be changed "in mid-air".
-        update_task_interactive = not is_editing_processing_task
+    # 3. Find the first matching rule and get its updates dictionary.
+    updates_dict = {}
+    for rule in rules:
+        if rule['condition'](state):
+            updates_dict = rule['get_updates'](state)
+            break
 
-        return (
-            gr.update(interactive=update_task_interactive, variant="primary"), # ADD_TASK_BUTTON (is now "Update Task")
-            gr.update(interactive=False, value="▶️ Process Queue", variant="secondary"), # PROCESS_QUEUE_BUTTON
-            gr.update(interactive=False, variant="secondary"), # CREATE_PREVIEW_BUTTON
-            gr.update(interactive=False, variant="secondary"), # CLEAR_IMAGE_BUTTON_UI
-            gr.update(interactive=False, variant="secondary"), # DOWNLOAD_IMAGE_BUTTON_UI
-            gr.update(interactive=False, variant="secondary"), # SAVE_QUEUE_BUTTON_UI
-            gr.update(interactive=False, variant="secondary"), # CLEAR_QUEUE_BUTTON_UI
-        )
-
-    queue = queue_state.get("queue", [])
-    if is_processing:
-        process_queue_text = "⏹️ Stop Processing"
-        process_queue_variant = "stop"
-        process_queue_interactive = True
-    queue_has_tasks = bool(queue)
-    has_image = input_image_pil is not None
-
-    # Check for pending tasks, which controls the "Clear Pending" button.
-    has_pending_tasks = any(task.get("status", "pending") == "pending" for task in queue)
-
-    # --- Button Logic ---
-
-    # Add Task, Clear Image, Download Image Buttons: Active if an image is present and not processing.
-    image_actions_interactive = has_image
-    add_task_variant = "primary" if image_actions_interactive else "secondary"
-    
-    # Process Queue Button (overloaded Start/Stop)
-    if is_processing:
-        process_queue_text = "⏹️ Stop Processing"
-        process_queue_variant = "stop"
-        process_queue_interactive = True # Always interactive to stop if processing
-    else:
-        process_queue_text = "▶️ Process Queue"
-        process_queue_variant = "primary"
-        process_queue_interactive = queue_has_tasks # Interactive to start only if tasks exist
-
-    # Create Preview Button: Active only during processing, disabled if a preview is scheduled.
-    # This now correctly checks the shared flag that the worker uses.
-    # Note: This button should only be interactive if the queue is processing.
-    create_preview_interactive = is_processing and not shared_state_module.shared_state_instance.preview_request_flag.is_set()
-    create_preview_variant = "primary" if create_preview_interactive else "secondary" # This determines color (green if active, grey if disabled)
-
-    # Save Queue Button: Active and green if there are tasks in the queue.
-    save_queue_interactive = queue_has_tasks
-    save_queue_variant = "primary" if save_queue_interactive else "secondary"
-
-    # Clear Pending Button: Active if there are any pending tasks, even during processing.
-    clear_pending_interactive = has_pending_tasks
-    clear_queue_variant = "stop" if clear_pending_interactive else "secondary"
-
-    return (
-        gr.update(interactive=image_actions_interactive, variant=add_task_variant),       # ADD_TASK_BUTTON
-        gr.update(interactive=process_queue_interactive, value=process_queue_text, variant=process_queue_variant), # PROCESS_QUEUE_BUTTON
-        gr.update(interactive=create_preview_interactive, variant=create_preview_variant), # CREATE_PREVIEW_BUTTON
-        gr.update(interactive=image_actions_interactive, variant="secondary"),             # CLEAR_IMAGE_BUTTON_UI
-        gr.update(interactive=image_actions_interactive, variant="secondary"),             # DOWNLOAD_IMAGE_BUTTON_UI
-        gr.update(interactive=save_queue_interactive, variant=save_queue_variant),         # SAVE_QUEUE_BUTTON_UI
-        gr.update(interactive=clear_pending_interactive, variant=clear_queue_variant),     # CLEAR_QUEUE_BUTTON_UI
-    )
+    # 4. Return the updates tuple in the correct, fixed order.
+    return tuple(updates_dict.get(key, gr.update()) for key in BUTTON_KEYS)

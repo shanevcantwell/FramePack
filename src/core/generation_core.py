@@ -311,10 +311,7 @@ def worker(
             )
 
             def callback_diffusion_step(d):
-                if shared_state_module.shared_state_instance.abort_state['level'] >= 2: # Check for hard abort signal
-                    raise KeyboardInterrupt("Hard abort signal received during sampling.")
                 current_diffusion_step = d["i"] + 1
-
                 preview_latent = d["denoised"]
                 preview_img_np = vae_decode_fake(preview_latent)
                 preview_img_np = (
