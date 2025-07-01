@@ -37,12 +37,6 @@ def np_to_base64_uri(np_array_or_tuple, format="png"):
         logger.error(f"Error converting NumPy to base64: {e}", exc_info=True)
         return None
 
-def get_queue_state(app_state):
-    """Retrieves the current queue state from the app state."""
-    if isinstance(app_state, dict):
-        return app_state.get("queue_state", {})
-    return {}
-
 def update_queue_df_display():
     """Formats the current queue state into a Gradio DataFrame update object for display."""
     queue_state = queue_manager_instance.get_state()
@@ -82,4 +76,5 @@ def update_queue_df_display():
             prompt_cell, f"{params.get('total_second_length', 0):.1f}s", img_md, "↑", "↓" # Remaining columns
         ])
         
-    return gr.update(value=data)
+    # Return an empty DataFrame with the correct headers if the queue is empty
+    return gr.update(value=data) if data else gr.update(value=[], headers=["ID", "Status", "✖", "✎", "Prompt", "Length", "Input", "↑", "↓"], datatype=["number","markdown","markdown","markdown","markdown","str","markdown","markdown","markdown"], col_count=(9,"fixed"))
