@@ -31,6 +31,9 @@ class SharedState:
 # Event to signal that a preview should be generated for the current segment.
         self.preview_request_flag: threading.Event = threading.Event()
 
+# Event to signal that the current task should be paused and its state saved.
+        self.pause_request_flag: threading.Event = threading.Event()
+
 # --- Model and Global State Containers ---
 # This dictionary will be populated at runtime by the main script after the models are loaded.
         self.models: dict = {}
@@ -57,8 +60,9 @@ CREATIVE_UI_KEYS = [
     K.STEPS_UI, K.CFG_UI, K.RS_UI
 ]
 ENVIRONMENT_UI_KEYS = [
-    K.USE_TEACACHE_UI, K.USE_FP32_TRANSFORMER_OUTPUT_CHECKBOX_UI, K.GPU_MEMORY_PRESERVATION_UI,
-    K.MP4_CRF_UI, K.OUTPUT_FOLDER_UI_CTRL, K.LATENT_WINDOW_SIZE_UI
+    K.USE_TEACACHE_UI, K.USE_FP32_TRANSFORMER_OUTPUT_CHECKBOX_UI, K.USE_STANDARD_FPS_CHECKBOX_UI,
+    K.GPU_MEMORY_PRESERVATION_UI, K.MP4_CRF_UI, K.OUTPUT_FOLDER_UI_CTRL, K.LATENT_WINDOW_SIZE_UI,
+    K.BACKUP_LATENTS_FREQUENCY_UI, K.BACKUP_LATENTS_KEPT_UI
 ]
 ALL_TASK_UI_KEYS = CREATIVE_UI_KEYS + ENVIRONMENT_UI_KEYS
 
@@ -81,6 +85,9 @@ UI_TO_WORKER_PARAM_MAP = {
     K.RS_UI: 'rs',
     K.USE_TEACACHE_UI: 'use_teacache',
     K.USE_FP32_TRANSFORMER_OUTPUT_CHECKBOX_UI: 'use_fp32_transformer_output',
+    K.USE_STANDARD_FPS_CHECKBOX_UI: 'use_standard_fps',
+    K.BACKUP_LATENTS_FREQUENCY_UI: 'backup_latents_frequency',
+    K.BACKUP_LATENTS_KEPT_UI: 'backup_latents_kept',
     K.GPU_MEMORY_PRESERVATION_UI: 'gpu_memory_preservation',
     K.MP4_CRF_UI: 'mp4_crf',
     K.OUTPUT_FOLDER_UI_CTRL: 'output_folder',
