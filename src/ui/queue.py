@@ -200,34 +200,6 @@ def save_queue_to_zip():
         logger.error(f"Error saving queue to zip: {e}", exc_info=True)
         return [gr.update(), None]
 
-def autosave_queue_on_exit_action():
-    """Saves the current queue to a fixed autosave file on exit."""
-    logger.info("Autosaving queue on exit...")
-    queue = queue_manager_instance.get_state().get("queue")
-    if not queue:
-        logger.info("Queue is empty, nothing to autosave.")
-        return
-    try:
-        # Use a similar logic to save_queue_to_zip but to a fixed path.
-        with zipfile.ZipFile(AUTOSAVE_FILENAME, 'w', zipfile.ZIP_DEFLATED) as zf:
-            queue_manifest = []
-            for task in queue:
-                params_copy = task['params'].copy()
-                input_image_np = params_copy.pop('input_image', None)
-                manifest_entry = {"id": task['id'], "params": params_copy, "status": task.get("status", "pending")}
-                if input_image_np is not None:
-                    img_filename = f"task_{task['id']}_input.png"
-                    manifest_entry['image_ref'] = img_filename
-                    img = Image.fromarray(input_image_np)
-                    with io.BytesIO() as buf:
-                        img.save(buf, format='PNG')
-                        zf.writestr(img_filename, buf.getvalue())
-                queue_manifest.append(manifest_entry)
-            zf.writestr(shared_state_module.QUEUE_STATE_JSON_IN_ZIP, json.dumps(queue_manifest, indent=4))
-        logger.info(f"Successfully autosaved queue with {len(queue)} tasks to {AUTOSAVE_FILENAME}.")
-    except Exception as e:
-        logger.error(f"Error during queue autosave: {e}", exc_info=True)
-
 def load_queue_from_zip(zip_file_or_path):
     """Loads a queue from a zip file, including task parameters and images."""
     filepath = None
