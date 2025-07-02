@@ -82,7 +82,7 @@ def create_ui():
         components[K.LORA_NAME_STATE] = gr.Textbox(visible=False, label="LoRA Names State")
         components[K.EXTRACTED_METADATA_STATE] = gr.State({})
         # components[K.RESUME_LATENT_PATH_STATE] = gr.State(None)
-        components[K.MODAL_TRIGGER_BOX] = gr.Textbox(visible=False)
+        components[K.MODAL_TRIGGER_STATE] = gr.Textbox(visible=False)
 
         gr.Markdown('# goan (Powered by FramePack)')
 
