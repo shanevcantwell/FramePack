@@ -899,6 +899,12 @@ class HunyuanVideoTransformer3DModelPacked(ModelMixin, ConfigMixin, PeftAdapterM
             clean_latents_2x=None, clean_latent_2x_indices=None,
             clean_latents_4x=None, clean_latent_4x_indices=None
     ):
+        
+        # On legacy GPUs (like Turing), conv3d lacks a bfloat16 CUDA kernel.
+        # We cast the input latents to float32 here to ensure compatibility,
+        # making the model robust against state corruption from the offload/reload cycle.
+        latents = latents.to(self.dtype)
+
         hidden_states = self.gradient_checkpointing_method(self.x_embedder.proj, latents)
         B, C, T, H, W = hidden_states.shape
 

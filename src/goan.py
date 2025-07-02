@@ -3,7 +3,7 @@
 
 import os
 import sys
-import atexit
+# import atexit
 import gradio as gr
 import logging
 import logging.handlers
@@ -89,7 +89,7 @@ block = ui_components['block']
 switchboard.wire_all_events(ui_components)
 
 # --- Application Load/Startup Events ---
-atexit.register(queue_manager.autosave_queue_on_exit_action, shared_state_module.shared_state_instance.global_state_for_autosave)
+# atexit.register(queue_manager.autosave_queue_on_exit_action, shared_state_module.shared_state_instance.global_state_for_autosave)
 
 # --- Application Launch ---
 if __name__ == "__main__":

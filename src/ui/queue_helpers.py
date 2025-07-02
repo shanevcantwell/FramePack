@@ -7,6 +7,7 @@ from PIL import Image
 import base64
 import io
 import logging
+import html
 
 from .queue_manager import queue_manager_instance
 
@@ -38,6 +39,69 @@ def np_to_base64_uri(np_array_or_tuple, format="png"):
         return None
 
 def update_queue_df_display():
+    """Formats the current queue state into a Gradio DataFrame update object for display."""
+    queue_state = queue_manager_instance.get_state()
+    queue = queue_state.get("queue", [])
+    processing = queue_state.get("processing", False)
+    editing_task_id = queue_state.get("editing_task_id") # Define this once here
+    total_tasks = len(queue)
+    data = []
+
+    def _button_markdown(icon: str, enabled: bool) -> str:
+        # ... (this helper function is correct as is)
+        if enabled:
+            return f"<a href='#' style='text-decoration: none; font-size: 1.2em;'>{icon}</a>"
+        else:
+            return f"<span style='color: #999; font-size: 1.2em; cursor: not-allowed;'>{icon}</span>"
+
+    for i, task in enumerate(queue):
+        params = task['params']
+        task_id = task['id']
+        status = task.get("status", "pending")
+
+        is_processing_current_task = processing and i == 0
+        is_pending = status == 'pending'
+
+        up_enabled = is_pending and i > 0 and not is_processing_current_task
+        down_enabled = is_pending and i < (total_tasks - 1) and not is_processing_current_task
+        pause_enabled = is_processing_current_task
+        edit_enabled = is_pending and not is_processing_current_task
+        cancel_enabled = is_pending or is_processing_current_task
+
+        up_arrow = _button_markdown('⬆️', up_enabled)
+        down_arrow = _button_markdown('⬇️', down_enabled)
+        pause_button = _button_markdown('⏸️', pause_enabled)
+        edit_button = _button_markdown('✎', edit_enabled)
+        cancel_button = _button_markdown('✖️', cancel_enabled)
+
+        prompt_display = (params['prompt'][:77] + '...') if len(params['prompt']) > 80 else params['prompt']
+        
+        # Using html.escape() is more robust for tooltips
+        prompt_title = html.escape(params['prompt'], quote=True)
+        prompt_cell = f'<span title="{prompt_title}">{prompt_display}</span>'
+
+        img_uri = np_to_base64_uri(params.get('input_image'), format="png")
+        thumbnail_size = "50px"
+        img_md = f'<img src="{img_uri}" alt="Input" style="max-width:{thumbnail_size}; max-height:{thumbnail_size}; display:block; margin:auto; object-fit:contain;" />' if img_uri else ""
+
+        # Consolidated status display logic
+        is_editing_this_task = editing_task_id == task_id
+        
+        status_display = ""
+        if is_processing_current_task: status_display = "⏳ Processing"
+        elif is_editing_this_task: status_display = "✏️ Editing"
+        elif status == "done": status_display = "✅ Done"
+        elif status == "error": status_display = f"❌ Error: {task.get('error_message', 'Unknown')}"
+        elif status == "aborted": status_display = "⏹️ Aborted"
+        else: status_display = "⏸️ Pending"
+
+        data.append([
+            up_arrow, down_arrow, pause_button, edit_button, cancel_button,
+            status_display, prompt_cell, img_md, f"{params.get('video_length', 0):.1f}s", task_id
+        ])
+
+    return gr.update(value=data) if data else gr.update(value=[], headers=["↑", "↓", "⏸️", "✎", "✖", "Status", "Prompt", "Image", "Length", "ID"], datatype=["markdown", "markdown", "markdown", "markdown", "markdown", "markdown", "markdown", "markdown", "str", "number"], col_count=(10, "dynamic"))
+
     """Formats the current queue state into a Gradio DataFrame update object for display."""
     queue_state = queue_manager_instance.get_state()
     queue = queue_state.get("queue", [])
@@ -79,8 +143,8 @@ def update_queue_df_display():
         cancel_button = _button_markdown('✖️', cancel_enabled)
 
         # Create a truncated prompt for display and a full-text tooltip
-        prompt_display = (params['prompt'][:77] + '...') if len(params['prompt']) > 80 else params['prompt']
-        prompt_title = params['prompt'].replace('"', '&quot;')
+        prompt_display = (params['prompt'][:77] + '...') if len(params['prompt']) > 80 else params['prompt']  # ASSISTANT: 77 is CLIP. I thought I heard 512 for the llama vector + CLIP
+        prompt_title = params['prompt'].replace('"', '&quot;') # ASSISTANT: This really needs to be more robust - doesn't python have something to escape?
         prompt_cell = f'<span title="{prompt_title}">{prompt_display}</span>'
 
         # Create an image thumbnail for the DataFrame

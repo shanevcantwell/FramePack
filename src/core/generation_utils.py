@@ -123,6 +123,7 @@ def handle_segment_saving(
     parsed_segments_to_decode_set: Set[int],
     fps: int,
     mp4_crf: int,
+    force_standard_fps: bool = False
 ) -> Optional[str]:
     """
     Handles the logic for saving an MP4 for the current segment, either automatically

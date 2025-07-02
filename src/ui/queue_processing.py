@@ -46,7 +46,7 @@ def process_task_queue_and_listen(*lora_control_values):
                     gr.update(value=None, visible=True),  # Progress bar
                     gr.update(interactive=True, value="⏹️ Stop Processing", variant="stop"),  # PROCESS_QUEUE_BUTTON
                     gr.update(interactive=True),  # CREATE_PREVIEW_BUTTON
-                    gr.update(interactive=False)  # CLEAR_QUEUE_BUTTON_UI
+                    gr.update(interactive=False)  # CLEAR_QUEUE_BUTTON
                 )
             elif flag == "progress":
                 # Unpack data: task_id, preview_np, desc, html

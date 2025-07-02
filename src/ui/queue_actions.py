@@ -104,12 +104,12 @@ def cancel_edit_mode_action(from_ui=True):
         num_outputs = len(shared_state_module.ALL_TASK_UI_KEYS) + 8
         updates = [gr.update()] * num_outputs
         updates[1] = queue_helpers.update_queue_df_display()
-        updates[2] = gr.update(value=None, visible=False) # INPUT_IMAGE_DISPLAY_UI
-        updates[3] = gr.update(visible=True, value=None) # IMAGE_FILE_INPUT_UI
+        updates[2] = gr.update(value=None, visible=False) # INPUT_IMAGE_DISPLAY
+        updates[3] = gr.update(visible=True, value=None) # QUEUE_DF
         for i, key in enumerate(shared_state_module.ALL_TASK_UI_KEYS):
             updates[4 + i] = ui_updates[i]
-        updates[-4] = gr.update(interactive=False, variant="secondary") # CLEAR_IMAGE_BUTTON_UI
-        updates[-3] = gr.update(interactive=False, variant="secondary") # DOWNLOAD_IMAGE_BUTTON_UI
+        updates[-4] = gr.update(interactive=False, variant="secondary") # CLEAR_IMAGE_BUTTON
+        updates[-3] = gr.update(interactive=False, variant="secondary") # DOWNLOAD_IMAGE_BUTTON
         updates[-2] = gr.update(value="Add Task to Queue", variant="secondary") # ADD_TASK_BUTTON
         updates[-1] = gr.update(visible=True) # CANCEL_EDIT_TASK_BUTTON
         return updates

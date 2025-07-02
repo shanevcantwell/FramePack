@@ -110,6 +110,16 @@ class ProcessingAgent(threading.Thread):
                 output_stream = AsyncStream()
                 worker_args = {**task["params"], "task_id": task["id"], **shared_state_module.shared_state_instance.models}
                 worker_args.pop('transformer', None)
+                
+                # The worker needs new arguments that the UI doesn't provide yet.
+                # We add safe default values here to satisfy the full function signature.
+                worker_args.setdefault('resume_latent_path', None)
+                worker_args.setdefault('auto_resume_frequency', 0)
+                worker_args.setdefault('auto_resume_retention', 0)
+
+                # This key is likely missing from your UI mapping. We'll default it to False.
+                worker_args.setdefault('force_standard_fps', False) 
+                
                 async_run(worker_wrapper, output_queue_ref=output_stream.output_queue, **worker_args)
 
                 task_final_status = "error"

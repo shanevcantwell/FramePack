@@ -467,7 +467,7 @@ def worker(
                 parsed_segments_to_decode_set=parsed_segments_to_decode_set,
                 fps=fps,
                 mp4_crf=mp4_crf,
-                playback_compatibility_mode=playback_compatibility_mode,
+                force_standard_fps=force_standard_fps,
             )
             if saved_file_path:
                 final_output_filename = saved_file_path

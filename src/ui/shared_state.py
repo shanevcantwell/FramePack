@@ -48,6 +48,7 @@ class SharedState:
 # Instantiate the singleton instance. Other modules will import 'shared_state_instance'.
 shared_state_instance = SharedState()
 
+IS_LEGACY_GPU_KEY = 'is_legacy_gpu'
 
 # --- UI and Parameter Mapping Constants ---
 # Centralized list of UI component keys for LoRA management.

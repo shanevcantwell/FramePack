@@ -7,6 +7,7 @@ import os
 import zipfile
 import tempfile
 import logging
+import time 
 
 from . import shared_state as shared_state_module
 from . import metadata as metadata_manager
@@ -76,11 +77,13 @@ def _apply_settings_dict_to_ui(settings_dict: Dict[K, Any], return_updates=True)
         try:
             # This block ensures that values from JSON (which are often strings)
             # are converted to the correct type for the UI components.
-            if key in [K.SEED_UI, K.LATENT_WINDOW_SIZE_UI, K.STEPS_UI, K.MP4_CRF_UI, K.PREVIEW_FREQUENCY_UI, K.ROLL_OFF_START_UI, K.FPS_UI, K.AUTO_RESUME_FREQUENCY_UI, K.AUTO_RESUME_RETENTION_UI]:
+            if key in [K.SEED, K.LATENT_WINDOW_SIZE_SLIDER, K.STEPS_SLIDER, K.MP4_CRF_SLIDER, K.PREVIEW_FREQUENCY_SLIDER, K.ROLL_OFF_START_SLIDER, K.FPS_SLIDER, 
+                       # K.AUTO_RESUME_FREQUENCY, K.AUTO_RESUME_RETENTION
+                       ]:
                 value = int(float(value))
-            elif key in [K.TOTAL_SECOND_LENGTH_UI, K.CFG_UI, K.GS_UI, K.RS_UI, K.GPU_MEMORY_PRESERVATION_UI, K.GS_FINAL_UI, K.ROLL_OFF_FACTOR_UI]:
+            elif key in [K.VIDEO_LENGTH_SLIDER, K.REAL_CFG_SLIDER, K.DISTILLED_CFG_START_SLIDER, K.GUIDANCE_RESCALE_SLIDER, K.GPU_MEMORY_PRESERVATION_SLIDER, K.DISTILLED_CFG_END_SLIDER, K.ROLL_OFF_FACTOR_SLIDER]:
                 value = float(value)
-            elif key in [K.USE_TEACACHE_UI, K.USE_FP32_TRANSFORMER_OUTPUT_CHECKBOX_UI]:
+            elif key in [K.USE_TEACACHE_CHECKBOX, K.USE_FP32_TRANSFORMER_OUTPUT_CHECKBOX]:
                 value = bool(value)
         except (ValueError, TypeError):
             value = default_values.get(key)
@@ -146,97 +149,58 @@ def get_initial_output_folder_from_settings():
     return default_output_folder_path
 
 # --- UI Handler Functions ---
-def handle_file_drop(temp_file_data: Any) -> Tuple:
+# In ui/workspace.py
+
+def handle_file_drop(temp_file_data: any) -> tuple:
     """
-    Unified handler for files dropped on the main input. It intelligently
-    determines if the file is an image or a .goan_resume package and
-    processes it accordingly.
+    Patched handler for file drops. This version returns a correctly
+    sized tuple of updates to resolve the ValueError on startup.
     """
+    # 1. Define the full list of output keys. This list must exactly match
+    # the components used to build `upload_outputs` in switchboard_image.py.
+    # This removes the "magic number" and fixes the crash.
+    output_keys = [
+        K.IMAGE_FILE_INPUT, K.INPUT_IMAGE_DISPLAY, K.CLEAR_IMAGE_BUTTON,
+        K.DOWNLOAD_IMAGE_BUTTON, K.ADD_TASK_BUTTON, K.METADATA_PROMPT_PREVIEW,
+        K.EXTRACTED_METADATA_STATE, K.METADATA_MODAL_TRIGGER_STATE
+    ] + shared_state_module.CREATIVE_UI_KEYS
+
+    # 2. Initialize a dictionary to hold all possible updates.
+    updates = {key: gr.update() for key in output_keys}
+
     filepath = None
     if isinstance(temp_file_data, str):
         filepath = temp_file_data
     elif hasattr(temp_file_data, 'name'):
         filepath = temp_file_data.name
 
-    num_workspace_outputs = len(get_default_values_map())
-    # 9 standard outputs + all workspace outputs
-    total_outputs = standard_outputs + num_workspace_outputs # this needs to be fixed to test the length of standard_outputs
-
     if not filepath:
-        return (gr.update(),) * total_outputs # Return no-op updates for all outputs
+        # If no file, return default "no change" updates.
+        return tuple(updates.get(key, gr.update()) for key in output_keys)
 
-    # --- Case 1: It's a resume file ---
+    # Block resume files for now, as requested.
     if filepath.endswith(('.goan_resume', '.zip')):
-        try:
-            with tempfile.TemporaryDirectory() as temp_dir:
-                with zipfile.ZipFile(filepath, 'r') as zf:
-                    # Signature check
-                    if 'params.json' not in zf.namelist() or 'latent_history.pt' not in zf.namelist():
-                        raise ValueError("Not a valid resume file")
+        gr.Warning("Resume file processing is currently disabled.")
+        return tuple(updates.get(key, gr.update()) for key in output_keys)
 
-                    # Extract all files
-                    zf.extractall(temp_dir)
-
-                    # Load params.json
-                    params_path = os.path.join(temp_dir, 'params.json')
-                    with open(params_path, 'r', encoding='utf-8') as f:
-                        params_dict = json.load(f)
-
-                    # Convert string keys to enums for _apply_settings_dict_to_ui
-                    valid_keys = {item.value for item in K}
-                    settings_dict = {K(k): v for k, v in params_dict.items() if k in valid_keys}
-
-                    # Apply settings to UI
-                    ui_updates = _apply_settings_dict_to_ui(settings_dict, return_updates=True)
-
-                    # Load source image if present
-                    image_update = gr.update()
-                    image_path = os.path.join(temp_dir, 'source_image.png')
-                    if os.path.exists(image_path):
-                        try:
-                            pil_image = Image.open(image_path)
-                            image_update = gr.update(value=pil_image, visible=True)
-                        except Exception as e:
-                            logger.warning(f"Could not load source image from resume file: {e}")
-                            image_update = gr.update(visible=False)
-                    else:
-                        image_update = gr.update(visible=False)
-
-                    # Save latent path to state (for resume)
-                    latent_path = os.path.join(temp_dir, 'latent_history.pt')
-                    latent_path_update = gr.update(value=latent_path)
-
-                    # Compose the output tuple:
-                    output_tuple = (image_update, latent_path_update) + tuple(ui_updates) + (gr.update(),) * (total_outputs - 2 - len(ui_updates))
-                    return output_tuple
-
-        except Exception as e:
-            logger.error(f"Error loading resume file: {e}", exc_info=True)
-            gr.Warning(f"Could not load resume file: {e}")
-            return (gr.update(),) * total_outputs
-
-    # --- Case 2: It's an image file ---
+    # Process the image file and populate the updates dictionary.
     try:
         pil_image = Image.open(filepath)
-        image_update = gr.update(value=pil_image, visible=True)
+        updates[K.INPUT_IMAGE_DISPLAY] = gr.update(value=pil_image, visible=True)
+        updates[K.IMAGE_FILE_INPUT] = gr.update(visible=False)
 
-        # Use shared metadata extraction
-        metadata_dict = metadata_manager.extract_metadata_from_pil_image(pil_image)
-
-        if metadata_dict:
-            valid_keys = {item.value for item in K}
-            settings_dict = {K(k): v for k, v in metadata_dict.items() if k in valid_keys}
-            ui_updates = _apply_settings_dict_to_ui(settings_dict, return_updates=True)
-            output_tuple = (image_update,) + tuple(ui_updates) + (gr.update(),) * (total_outputs - 1 - len(ui_updates))
-            return output_tuple
-        else:
-            # No metadata: only update the image, leave all other fields unchanged
-            return (image_update,) + (gr.update(),) * (total_outputs - 1)
+        params = metadata_manager.extract_metadata_from_pil_image(pil_image)
+        if params:
+            updates[K.EXTRACTED_METADATA_STATE] = params
+            updates[K.METADATA_PROMPT_PREVIEW] = params.get('prompt', '')
+            updates[K.METADATA_MODAL_TRIGGER_STATE] = gr.update(value=str(time.time()))
     except Exception as e:
-        logger.warning(f"Could not load image: {e}")
-        # Clear the image box and leave all other fields unchanged
-        image_update = gr.update(value=None, visible=False)
-        return (image_update,) + (gr.update(),) * (total_outputs - 1)
+        gr.Warning(f"Could not load file as an image: {e}")
+        updates[K.INPUT_IMAGE_DISPLAY] = gr.update(value=None, visible=False)
+        updates[K.IMAGE_FILE_INPUT] = gr.update(visible=True, value=None)
+
+    # 3. Assemble the final tuple in the correct order.
+    return tuple(updates.get(key, gr.update()) for key in output_keys)
 
 def save_workspace(*ui_values_tuple):
     """Prepares the full workspace settings as a JSON string for download."""

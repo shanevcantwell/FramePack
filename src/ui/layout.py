@@ -82,44 +82,43 @@ def create_ui():
         components[K.LORA_NAME_STATE] = gr.Textbox(visible=False, label="LoRA Names State")
         components[K.EXTRACTED_METADATA_STATE] = gr.State({})
         # components[K.RESUME_LATENT_PATH_STATE] = gr.State(None)
-        components[K.MODAL_TRIGGER_STATE] = gr.Textbox(visible=False)
+        components[K.METADATA_MODAL_TRIGGER_STATE] = gr.Textbox(visible=False)
 
         gr.Markdown('# goan (Powered by FramePack)')
 
         with Modal(visible=False) as metadata_modal:
             components[K.METADATA_MODAL] = metadata_modal
             gr.Markdown("Image has saved parameters. Overwrite current creative settings?")
-            components[K.METADATA_PROMPT_PREVIEW_UI] = gr.Textbox(label="Detected Prompt", interactive=False, lines=5, max_lines=10)
+            components[K.METADATA_PROMPT_PREVIEW] = gr.Textbox(label="Detected Prompt", interactive=False, lines=5, max_lines=10)
             with gr.Row():
-                components[K.CANCEL_METADATA_BTN] = gr.Button("No")
-                components[K.CONFIRM_METADATA_BTN] = gr.Button("Yes, Apply", variant="primary")
+                components[K.CANCEL_METADATA_BUTTON] = gr.Button("No")
+                components[K.CONFIRM_METADATA_BUTTON] = gr.Button("Yes, Apply", variant="primary")
 
         with gr.Row():
             with gr.Column(scale=1, min_width=300):
-                components[K.IMAGE_FILE_INPUT_UI] = gr.File(label="Drop Image or .goan_resume File Here", file_types=["image", ".zip", ".goan_resume"], elem_id="image_file_input_ui")
-                components[K.INPUT_IMAGE_DISPLAY_UI] = gr.Image(type="pil", label="Current Input Image", interactive=False, visible=False, height=220, show_download_button=False)
+                components[K.IMAGE_FILE_INPUT] = gr.File(label="Drop Image or .goan_resume File Here", file_types=["image", ".zip", ".goan_resume"], elem_id="image_file_input_ui")
+                components[K.INPUT_IMAGE_DISPLAY] = gr.Image(type="pil", label="Current Input Image", interactive=False, visible=False, height=220, show_download_button=False)
                 with gr.Row():
                     components[K.ADD_TASK_BUTTON] = gr.Button("Add to Queue", variant="secondary", interactive=False)
                     components[K.CANCEL_EDIT_TASK_BUTTON] = gr.Button("Cancel Edit", visible=False, variant="secondary")
                 with gr.Row():
-                    components[K.CLEAR_IMAGE_BUTTON_UI] = gr.Button("Clear Image", variant="secondary", interactive=False, elem_id="clear_image_button")
-                    components[K.DOWNLOAD_IMAGE_BUTTON_UI] = gr.Button("Download Image", variant="secondary", interactive=False, elem_id="download_image_button")
+                    components[K.CLEAR_IMAGE_BUTTON] = gr.Button("Clear Image", variant="secondary", interactive=False, elem_id="clear_image_button")
+                    components[K.DOWNLOAD_IMAGE_BUTTON] = gr.Button("Download Image", variant="secondary", interactive=False, elem_id="download_image_button")
                 components[K.PROCESS_QUEUE_BUTTON] = gr.Button("▶️ Process Queue", variant="primary", interactive=False)
                 components[K.CREATE_PREVIEW_BUTTON] = gr.Button("📸 Create Preview", variant="secondary", interactive=False, elem_id="create_preview_button")
             with gr.Column(scale=2, min_width=600):
-                components[K.PROMPT_UI] = gr.Textbox(label="Prompt", lines=10)
-                components[K.N_PROMPT_UI] = gr.Textbox(label="Negative Prompt", lines=4)
+                components[K.POSITIVE_PROMPT] = gr.Textbox(label="Prompt", lines=10)
+                components[K.NEGATIVE_PROMPT] = gr.Textbox(label="Negative Prompt", lines=4)
                 with gr.Row():
-                    components[K.TOTAL_SECOND_LENGTH_UI] = gr.Slider(label="Video Length (s)", minimum=0.1, maximum=120, value=5.0, step=0.1)
-                    # Corrected and single definition for SEED_UI
-                    components[K.SEED_UI] = gr.Number(label="Seed", value=-1, precision=0, minimum=-1, maximum=2**32 - 1)
+                    components[K.VIDEO_LENGTH_SLIDER] = gr.Slider(label="Video Length (s)", minimum=0.1, maximum=120, value=5.0, step=0.1)
+                    components[K.SEED] = gr.Number(label="Seed", value=-1, precision=0, minimum=-1, maximum=2**32 - 1)
 
         with gr.Group():
             # These hidden file components are the targets for one-click downloads.
-            components[K.IMAGE_DOWNLOADER_UI] = gr.File(visible=False, elem_id="image_downloader_hidden_file")
-            components[K.QUEUE_DOWNLOADER_UI] = gr.File(visible=False, elem_id="queue_downloader_hidden_file")
+            components[K.IMAGE_DOWNLOADER] = gr.File(visible=False, elem_id="image_downloader_hidden_file")
+            components[K.QUEUE_DOWNLOADER] = gr.File(visible=False, elem_id="queue_downloader_hidden_file")
             gr.Markdown("## Task Queue") # Removed "Steps" header, reordered action buttons
-            components[K.QUEUE_DF_DISPLAY_UI] = gr.DataFrame(
+            components[K.QUEUE_DF] = gr.DataFrame(
                 headers=["↑", "↓", "⏸️", "✎", "✖", "Status", "Prompt", "Image", "Length", "ID"],
                 datatype=["markdown", "markdown", "markdown", "markdown", "markdown", "markdown", "markdown", "markdown", "str", "number"],
                 col_count=(10, "dynamic"),
@@ -128,11 +127,11 @@ def create_ui():
             )
             with gr.Row():
                 # Changed from DownloadButton to Button to enable one-click download via JS.
-                components[K.SAVE_QUEUE_BUTTON_UI] = gr.Button("Save Queue", size="sm", interactive=False)
-                components[K.LOAD_QUEUE_BUTTON_UI] = gr.UploadButton("Load Queue", file_types=[".zip"], size="sm", variant="primary")
-                components[K.CLEAR_QUEUE_BUTTON_UI] = gr.Button("Clear Pending", size="sm", variant="stop", interactive=False)
+                components[K.SAVE_QUEUE_BUTTON] = gr.Button("Save Queue", size="sm", interactive=False)
+                components[K.LOAD_QUEUE_BUTTON] = gr.UploadButton("Load Queue", file_types=[".zip"], size="sm", variant="primary")
+                components[K.CLEAR_QUEUE_BUTTON] = gr.Button("Clear Pending", size="sm", variant="stop", interactive=False)
 
-        components[K.CURRENT_TASK_PREVIEW_IMAGE_UI] = gr.Image(label="Live Latent Preview", interactive=False, visible=False, show_download_button=False)
+        components[K.CURRENT_TASK_PREVIEW_IMAGE] = gr.Image(label="Live Latent Preview", interactive=False, visible=False, show_download_button=False)
 
         with gr.Row(equal_height=False):
             with gr.Column(scale=1):

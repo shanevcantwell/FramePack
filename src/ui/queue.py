@@ -63,7 +63,7 @@ def add_or_update_task_in_queue(*args_from_ui_controls_tuple):
         # The switchboard expects a specific number of outputs.
         num_outputs = len(shared_state_module.ALL_TASK_UI_KEYS) + 8
         updates = [gr.update()] * num_outputs
-        # Index 0 is APP_STATE, Index 1 is QUEUE_DF_DISPLAY_UI
+        # Index 0 is APP_STATE, Index 1 is QUEUE_DF
         updates[1] = queue_helpers.update_queue_df_display()
         return updates
 

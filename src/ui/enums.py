@@ -39,7 +39,7 @@ class ComponentKey(StrEnum):
     CONFIRM_METADATA_BUTTON = auto()
 
     # --- Task Queue ---
-    QUEUE_DATAFRAME = auto()
+    QUEUE_DF = auto()
     SAVE_QUEUE_BUTTON = auto()
     LOAD_QUEUE_BUTTON = auto()
     CLEAR_QUEUE_BUTTON = auto()
