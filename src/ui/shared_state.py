@@ -61,45 +61,13 @@ CREATIVE_UI_KEYS = [
     K.STEPS_SLIDER, K.REAL_CFG_SLIDER, K.GUIDANCE_RESCALE_SLIDER
 ]
 ENVIRONMENT_UI_KEYS = [
-<<<<<<< Updated upstream
-    K.USE_TEACACHE_UI, K.USE_FP32_TRANSFORMER_OUTPUT_CHECKBOX_UI, K.USE_STANDARD_FPS_CHECKBOX_UI,
-    K.GPU_MEMORY_PRESERVATION_UI, K.MP4_CRF_UI, K.OUTPUT_FOLDER_UI_CTRL, K.LATENT_WINDOW_SIZE_UI,
-    K.BACKUP_LATENTS_FREQUENCY_UI, K.BACKUP_LATENTS_KEPT_UI
-=======
     K.USE_TEACACHE_CHECKBOX, K.USE_FP32_TRANSFORMER_OUTPUT_CHECKBOX, K.GPU_MEMORY_PRESERVATION_SLIDER,
     K.MP4_CRF_SLIDER, K.OUTPUT_FOLDER_TEXTBOX, K.LATENT_WINDOW_SIZE_SLIDER
->>>>>>> Stashed changes
 ]
 ALL_TASK_UI_KEYS = CREATIVE_UI_KEYS + ENVIRONMENT_UI_KEYS
 
 # This is the single source of truth for converting UI component names to worker parameter names.
 UI_TO_WORKER_PARAM_MAP = {
-<<<<<<< Updated upstream
-    K.PROMPT_UI: 'prompt',
-    K.N_PROMPT_UI: 'n_prompt',
-    K.TOTAL_SECOND_LENGTH_UI: 'total_second_length',
-    K.SEED_UI: 'seed',
-    K.PREVIEW_FREQUENCY_UI: 'preview_frequency',
-    K.SEGMENTS_TO_DECODE_CSV_UI: 'segments_to_decode_csv',
-    K.FPS_UI: 'fps',
-    K.GS_UI: 'gs',
-    K.GS_SCHEDULE_SHAPE_UI: 'gs_schedule_shape',
-    K.GS_FINAL_UI: 'gs_final',
-    K.ROLL_OFF_START_UI: 'roll_off_start',
-    K.ROLL_OFF_FACTOR_UI: 'roll_off_factor',
-    K.STEPS_UI: 'steps',
-    K.CFG_UI: 'cfg',
-    K.RS_UI: 'rs',
-    K.USE_TEACACHE_UI: 'use_teacache',
-    K.USE_FP32_TRANSFORMER_OUTPUT_CHECKBOX_UI: 'use_fp32_transformer_output',
-    K.USE_STANDARD_FPS_CHECKBOX_UI: 'use_standard_fps',
-    K.BACKUP_LATENTS_FREQUENCY_UI: 'backup_latents_frequency',
-    K.BACKUP_LATENTS_KEPT_UI: 'backup_latents_kept',
-    K.GPU_MEMORY_PRESERVATION_UI: 'gpu_memory_preservation',
-    K.MP4_CRF_UI: 'mp4_crf',
-    K.OUTPUT_FOLDER_UI_CTRL: 'output_folder',
-    K.LATENT_WINDOW_SIZE_UI: 'latent_window_size'
-=======
     K.POSITIVE_PROMPT: 'prompt',
     K.NEGATIVE_PROMPT: 'negative_prompt',
     K.VIDEO_LENGTH_SLIDER: 'video_length',
@@ -121,7 +89,6 @@ UI_TO_WORKER_PARAM_MAP = {
     K.MP4_CRF_SLIDER: 'mp4_crf',
     K.OUTPUT_FOLDER_TEXTBOX: 'output_folder',
     K.LATENT_WINDOW_SIZE_SLIDER: 'latent_window_size'
->>>>>>> Stashed changes
 }
 
 # The CREATIVE_PARAM_KEYS list defines the canonical names for parameters that are saved

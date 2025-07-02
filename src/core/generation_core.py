@@ -39,13 +39,8 @@ def worker(
     steps,
     real_cfg,
     distilled_cfg_start,
-<<<<<<< Updated upstream
-    distilled_cfg_end,
-    variable_cfg_shape,
-=======
     variable_cfg_shape,
     distilled_cfg_end,
->>>>>>> Stashed changes
     roll_off_start,
     roll_off_factor,
     guidance_rescale,
@@ -74,11 +69,7 @@ def worker(
 
     # --- Job Initialization ---
     total_latent_sections, job_id = generation_utils.initialize_job(
-<<<<<<< Updated upstream
-        video_length=video_length,
-=======
         total_second_length=video_length,
->>>>>>> Stashed changes
         fps=fps,
         latent_window_size=latent_window_size,
         task_id=task_id,
@@ -95,11 +86,7 @@ def worker(
     success = False
 
     initial_gs_from_ui = distilled_cfg_start
-<<<<<<< Updated upstream
     distilled_cfg_end_value_for_schedule = (
-=======
-    gs_final_value_for_schedule = (
->>>>>>> Stashed changes
         distilled_cfg_end if distilled_cfg_end is not None else initial_gs_from_ui
     )
 
@@ -141,16 +128,8 @@ def worker(
             "steps": steps,
             "real_cfg": real_cfg,
             "distilled_cfg_start": distilled_cfg_start,
-<<<<<<< Updated upstream
-            "distilled_cfg_end": distilled_cfg_end,
-            "guidance_rescale": guidance_rescale,
-            "preview_frequency": preview_frequency,
-            "segments_to_decode_csv": segments_to_decode_csv,
-            "variable_cfg_shape": variable_cfg_shape,
-=======
             "variable_cfg_shape": variable_cfg_shape,
             "distilled_cfg_end": distilled_cfg_end,
->>>>>>> Stashed changes
             "roll_off_start": roll_off_start,
             "roll_off_factor": roll_off_factor,
             "guidance_rescale": guidance_rescale,
