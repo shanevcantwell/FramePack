@@ -3,6 +3,8 @@ outputs/
 repo/
 *Zone.Identifier
 loras/
+.scripts/
+install.sh #
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
