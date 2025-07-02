@@ -146,7 +146,7 @@ def create_ui():
                 with gr.Accordion("LoRA Settings", open=False, visible=True) as lora_accordion:
                     components[K.LORA_ACCORDION] = lora_accordion # Naming convention?
                     gr.Markdown("🧪 Experimental LoRA support. Upload a `.safetensors` file. Applied before generation.")
-                    components[K.LORA_UPLOAD_BUTTON_UI] = gr.UploadButton("Upload LoRA", file_types=[".safetensors"], file_count="single", size="sm")
+                    components[K.LORA_UPLOAD_BUTTON] = gr.UploadButton("Upload LoRA", file_types=[".safetensors"], file_count="single", size="sm")
                     with gr.Row(visible=False, variant="panel") as lora_row_0_ctx: # I'm pretty sure this is all meant to be a dict for future functionality of multiple LoRAs and not hard coded _0 naming scheme
                         components[K.LORA_ROW_0] = lora_row_0_ctx
                         components[K.LORA_NAME_0] = gr.Textbox(label="LoRA Name", interactive=False, scale=2)

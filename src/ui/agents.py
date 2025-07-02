@@ -154,6 +154,7 @@ class ProcessingAgent(threading.Thread):
         finally:
             logger.info("Processing finished. Reverting all LoRAs to clean up.")
             lora_handler.revert_all_loras()
+            logger.info("All LoRAs reverted. Processing agent is now idle.")
             self.is_processing = False
             queue_manager_instance.set_processing(False)
             shared_state_module.shared_state_instance.interrupt_flag.clear()
