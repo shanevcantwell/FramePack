@@ -117,33 +117,7 @@ def load_settings_from_file(filepath, return_updates=True):
         # This handles the case where a non-existent path is passed, but not None
         gr.Warning(f"Workspace file not found at: {filepath}")
 
-    final_settings = {**default_values, **loaded_settings}
-    output_values = []
-
-    # Iterate over the keys from the defaults map to ensure all settings are handled.
-    for key in default_values.keys():
-        value = final_settings.get(key, default_values[key])
-        try:
-            if key in [
-                K.SEED, K.LATENT_WINDOW_SIZE_SLIDER, K.STEPS_SLIDER, K.MP4_CRF_SLIDER,
-                K.PREVIEW_FREQUENCY_SLIDER, K.ROLL_OFF_START_SLIDER, K.FPS_SLIDER
-            ]:
-                value = int(value)
-            elif key in [
-                K.VIDEO_LENGTH_SLIDER, K.REAL_CFG_SLIDER, K.DISTILLED_CFG_START_SLIDER,
-                K.GUIDANCE_RESCALE_SLIDER, K.GPU_MEMORY_PRESERVATION_SLIDER,
-                K.DISTILLED_CFG_END_SLIDER, K.ROLL_OFF_FACTOR_SLIDER
-            ]:
-                value = float(value)
-            elif key in [K.USE_TEACACHE_CHECKBOX, K.USE_FP32_TRANSFORMER_OUTPUT_CHECKBOX]:
-                value = bool(value)
-        except (ValueError, TypeError):
-            value = default_values.get(key)
-            gr.Warning(f"Invalid value for {key} in loaded settings. Reverting to default.")
-        output_values.append(value)
-
-    return [gr.update(value=v) for v in output_values] if return_updates else output_values
-
+    return _apply_settings_dict_to_ui(loaded_settings, return_updates)
 
 def get_initial_output_folder_from_settings():
     """

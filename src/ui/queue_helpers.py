@@ -102,8 +102,8 @@ def update_queue_df_display():
         else: status_display = "⏸️ Pending"
 
         data.append([
-            task_id, status_display, "✖", "✎", # These match the new header order
-            prompt_cell, f"{params.get('video_length', 0):.1f}s", img_md, "↑", "↓" # Updated to 'video_length'
+            up_arrow, down_arrow, pause_button, edit_button, cancel_button,
+            status_display, prompt_cell, img_md, f"{params.get('video_length', 0):.1f}s", task_id
         ])
 
     # Return an empty DataFrame with the correct headers if the queue is empty
