@@ -15,11 +15,20 @@ from .queue_manager import queue_manager_instance
 from . import shared_state as shared_state_module
 from .enums import ComponentKey as K
 from . import workspace as workspace_manager
-from . import queue_helpers
+from . import queue_helpers, agents
 
 logger = logging.getLogger(__name__)
 
 AUTOSAVE_FILENAME = "goan_autosave_queue.zip"
+
+# This mapping must match the header order in layout.py
+ACTION_COLUMN_MAP = {
+    0: 'move_up',
+    1: 'move_down',
+    2: 'pause',
+    3: 'edit',
+    4: 'cancel'
+}
 
 def add_or_update_task_in_queue(*args_from_ui_controls_tuple):
     """
@@ -78,34 +87,55 @@ def handle_queue_action_on_select(*args, evt: gr.SelectData):
     # The full list of UI components is passed in *args, but we don't need them here.
     # We only need the event data.
     num_outputs = len(shared_state_module.ALL_TASK_UI_KEYS) + 8
-    if evt.index is None or evt.value not in ["↑", "↓", "✖", "✎"]:
+    if evt.index is None:
         return [gr.update()] * num_outputs
 
-    row_index, _ = evt.index
-    button_clicked = evt.value
+    row_index, col_index = evt.index
+
+    if col_index not in ACTION_COLUMN_MAP:
+        logger.debug(f"Click on non-action column ({col_index}), ignoring.")
+        return [gr.update()] * num_outputs
+
+    action = ACTION_COLUMN_MAP[col_index]
     queue_state = queue_manager_instance.get_state()
     queue = queue_state["queue"]
 
-    is_processing_task = queue_state.get("processing", False) and row_index == 0
-
-    if is_processing_task and button_clicked in ["↑", "↓"]:
-        gr.Warning("Cannot modify a task that is currently processing.")
+    if not (0 <= row_index < len(queue)):
+        logger.warning(f"Invalid row index {row_index} for queue action.")
         return [gr.update()] * num_outputs
-    if button_clicked == "↑":
+
+    task = queue[row_index]
+    task_id = task['id']
+    status = task.get("status", "pending")
+    is_processing = status == 'processing' or (queue_state.get("processing", False) and row_index == 0)
+    is_pending = status == 'pending'
+
+    logger.info(f"Queue action '{action}' requested for task {task_id} with status '{status}'.")
+
+    # --- Backend Enforcement of Disabled State ---
+    if action in ['move_up', 'move_down', 'edit'] and not is_pending:
+        gr.Info(f"Cannot '{action}' a task that is not 'Pending'.")
+        return [gr.update()] * num_outputs
+    if action == 'pause' and not is_processing:
+        gr.Info("Can only pause a task that is currently 'Processing'.")
+        return [gr.update()] * num_outputs
+
+    # --- Handle Action ---
+    if action == "move_up":
         queue_manager_instance.move_task('up', row_index)
-    elif button_clicked == "↓":
+    elif action == "move_down":
         queue_manager_instance.move_task('down', row_index)
-    elif button_clicked == "✖":
-        if is_processing_task:
+    elif action == "cancel":
+        if is_processing:
             gr.Info(f"Stopping and removing currently processing task {queue[0]['id']}...")
-            ProcessingAgent().send({"type": "stop"})
+            agents.ProcessingAgent().send({"type": "stop"})
             # The agent will handle the task status change. We just update the display.
         else:
             removed_id = queue_manager_instance.remove_task(row_index)
             if removed_id is not None and queue_state.get("editing_task_id") == removed_id:
                 # If we deleted the task we were editing, cancel edit mode.
                 return cancel_edit_mode_action()
-    elif button_clicked == "✎":
+    elif action == "edit":
         task_to_edit = queue_manager_instance.get_task_to_edit(row_index)
         if not task_to_edit:
             return [gr.update()] * num_outputs
@@ -123,6 +153,10 @@ def handle_queue_action_on_select(*args, evt: gr.SelectData):
             [gr.update(interactive=True), gr.update(interactive=True), gr.update(value="Update Task", variant="primary"), gr.update(visible=True)]
         )
         return final_updates
+    elif action == "pause":
+        gr.Info(f"Requesting pause for task {task_id}...")
+        agents.ProcessingAgent().send({"type": "pause"})
+        # No immediate UI update needed, the worker will signal back.
 
     # Default case: just update the queue display if a move or simple delete happened.
     updates = [gr.update()] * num_outputs

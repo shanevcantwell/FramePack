@@ -81,6 +81,7 @@ def create_ui():
         })
         components[K.LORA_NAME_STATE] = gr.Textbox(visible=False, label="LoRA Names State")
         components[K.EXTRACTED_METADATA_STATE] = gr.State({})
+        components[K.RESUME_LATENT_PATH_STATE] = gr.State(None)
         components[K.MODAL_TRIGGER_BOX] = gr.Textbox(visible=False)
 
         gr.Markdown('# goan (Powered by FramePack)')
@@ -95,7 +96,7 @@ def create_ui():
 
         with gr.Row():
             with gr.Column(scale=1, min_width=300):
-                components[K.IMAGE_FILE_INPUT_UI] = gr.File(label="Drop Image Here or Click to Upload", file_types=["image"], elem_id="image_file_input_ui")
+                components[K.IMAGE_FILE_INPUT_UI] = gr.File(label="Drop Image or .goan_resume File Here", file_types=["image", ".zip", ".goan_resume"], elem_id="image_file_input_ui")
                 components[K.INPUT_IMAGE_DISPLAY_UI] = gr.Image(type="pil", label="Current Input Image", interactive=False, visible=False, height=220, show_download_button=False)
                 with gr.Row():
                     components[K.ADD_TASK_BUTTON] = gr.Button("Add to Queue", variant="secondary", interactive=False)
@@ -118,7 +119,13 @@ def create_ui():
             components[K.IMAGE_DOWNLOADER_UI] = gr.File(visible=False, elem_id="image_downloader_hidden_file")
             components[K.QUEUE_DOWNLOADER_UI] = gr.File(visible=False, elem_id="queue_downloader_hidden_file")
             gr.Markdown("## Task Queue") # Removed "Steps" header, reordered action buttons
-            components[K.QUEUE_DF_DISPLAY_UI] = gr.DataFrame(headers=["ID", "Status", "✖", "✎", "Prompt", "Length", "Input", "↑", "↓"], datatype=["number","markdown","markdown","markdown","markdown","str","markdown","markdown","markdown"], col_count=(9,"fixed"), interactive=False, elem_id="queue_df")
+            components[K.QUEUE_DF_DISPLAY_UI] = gr.DataFrame(
+                headers=["↑", "↓", "⏸️", "✎", "✖", "Status", "Prompt", "Image", "Length", "ID"],
+                datatype=["markdown", "markdown", "markdown", "markdown", "markdown", "markdown", "markdown", "markdown", "str", "number"],
+                col_count=(10, "dynamic"),
+                interactive=False,
+                elem_id="queue_df"
+            )
             with gr.Row():
                 # Changed from DownloadButton to Button to enable one-click download via JS.
                 components[K.SAVE_QUEUE_BUTTON_UI] = gr.Button("Save Queue", size="sm", interactive=False)

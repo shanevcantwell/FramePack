@@ -1,15 +1,20 @@
 # core/generation_utils.py
 # Contains helper functions refactored from generation_core.py
 import logging
-
 import os
+import json
+import io
+import zipfile
+import torch
+from PIL import Image
+import numpy as np
+from typing import Optional, Tuple, Set, Dict
+
 from ui.shared_state import shared_state_instance
 from diffusers_helper.memory import load_model_as_complete, unload_complete_models, gpu
 from diffusers_helper.hunyuan import vae_decode
 from diffusers_helper.utils import save_bcthw_as_mp4, generate_timestamp
 from diffusers_helper.gradio.progress_bar import make_progress_bar_html
-import numpy as np
-from typing import Optional, Tuple, Set
 
 from . import generation_utils
 logger = logging.getLogger(__name__)
@@ -160,6 +165,77 @@ def handle_segment_saving(
     else:
         logger.info(f"Task {task_id}: SKIPPED MP4 save for intermediate segment {current_loop_segment_number}.")
         return None
+
+def save_resume_state(
+    outputs_folder: str,
+    job_id: str,
+    current_loop_segment_number: int,
+    history_latents: torch.Tensor,
+    input_image_np: np.ndarray,
+    creative_params: Dict,
+    task_id: str,
+    retention_count: int,
+) -> Optional[str]:
+    """
+    Saves the current generation state to a .goan_resume zip archive.
+    This is the third "secret sauce" block.
+    """
+    resume_dir = os.path.join(outputs_folder, "resume_states")
+    os.makedirs(resume_dir, exist_ok=True)
+
+    if retention_count == 0:
+        return None # Do not save if retention is explicitly zero.
+
+    resume_filename_base = f"{job_id}_resume_seg_{current_loop_segment_number}"
+    resume_zip_path = os.path.join(resume_dir, f"{resume_filename_base}.goan_resume")
+
+    logger.info(f"Task {task_id}: Saving resume state to {resume_zip_path}...")
+
+    try:
+        with zipfile.ZipFile(resume_zip_path, 'w', zipfile.ZIP_DEFLATED) as zf:
+            # 1. Save creative parameters to params.json
+            # The passed dict contains all necessary creative & environment params.
+            zf.writestr('params.json', json.dumps(creative_params, indent=4))
+
+            # 2. Save source image to source_image.png
+            img = Image.fromarray(input_image_np)
+            with io.BytesIO() as buf:
+                img.save(buf, format='PNG')
+                zf.writestr('source_image.png', buf.getvalue())
+
+            # 3. Save latent history to latent_history.pt
+            with io.BytesIO() as buf:
+                torch.save(history_latents.cpu(), buf)
+                zf.writestr('latent_history.pt', buf.getvalue())
+
+            # 4. Save job metadata to job_info.json
+            job_info = {
+                'job_id': job_id,
+                'completed_segments': current_loop_segment_number,
+            }
+            zf.writestr('job_info.json', json.dumps(job_info, indent=4))
+
+        logger.info(f"Task {task_id}: Successfully saved resume state to {resume_zip_path}")
+
+        # --- Handle rolling file retention ---
+        if retention_count > 0:
+            try:
+                # Find all resume files for this job_id
+                all_resume_files = [f for f in os.listdir(resume_dir) if f.startswith(job_id) and f.endswith('.goan_resume')]
+                if len(all_resume_files) > retention_count:
+                    # Sort files to find the oldest ones. Sorting by name works due to the _seg_N suffix.
+                    all_resume_files.sort(key=lambda name: int(name.split('_seg_')[1].split('.')[0]))
+                    files_to_delete = all_resume_files[:-retention_count]
+                    for f_del in files_to_delete:
+                        os.remove(os.path.join(resume_dir, f_del))
+                        logger.info(f"Task {task_id}: Deleted old resume file: {f_del}")
+            except Exception as e_clean:
+                logger.error(f"Task {task_id}: Error during resume file cleanup: {e_clean}", exc_info=True)
+        return resume_zip_path
+    except Exception as e:
+        logger.error(f"Task {task_id}: Failed to save resume state: {e}", exc_info=True)
+        return None
+
 
 def _save_final_preview(history_latents, vae, job_id, task_id, outputs_folder, crf, fps, output_queue_ref, high_vram):
     """

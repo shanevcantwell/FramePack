@@ -43,12 +43,41 @@ def update_queue_df_display():
     queue = queue_state.get("queue", [])
     data = []
     processing = queue_state.get("processing", False)
-    editing_task_id = queue_state.get("editing_task_id", None)
-    
+    total_tasks = len(queue)
+
+    def _button_markdown(icon: str, enabled: bool) -> str:
+        """Generates markdown for an action button, styled as enabled or disabled."""
+        if enabled:
+            # The <a> tag makes it look clickable, triggering the .select() event.
+            return f"<a href='#' style='text-decoration: none; font-size: 1.2em;'>{icon}</a>"
+        else:
+            # A plain span with muted color indicates a disabled state.
+            return f"<span style='color: #999; font-size: 1.2em; cursor: not-allowed;'>{icon}</span>"
+
     for i, task in enumerate(queue):
         params = task['params']
         task_id = task['id']
-        
+        status = task.get("status", "pending")
+
+        # Determine the state of each action button for the current task.
+        is_processing_current_task = processing and i == 0
+        is_pending = status == 'pending'
+        is_editing_current_task = queue_state.get("editing_task_id") == task_id
+
+        # Define button enabled/disabled states based on task status and position.
+        up_enabled = is_pending and i > 0 and not is_processing_current_task
+        down_enabled = is_pending and i < (total_tasks - 1) and not is_processing_current_task
+        pause_enabled = is_processing_current_task
+        edit_enabled = is_pending and not is_processing_current_task
+        cancel_enabled = is_pending or is_processing_current_task
+
+        # Generate the markdown for each button.
+        up_arrow = _button_markdown('⬆️', up_enabled)
+        down_arrow = _button_markdown('⬇️', down_enabled)
+        pause_button = _button_markdown('⏸️', pause_enabled)
+        edit_button = _button_markdown('✎', edit_enabled)
+        cancel_button = _button_markdown('✖️', cancel_enabled)
+
         # Create a truncated prompt for display and a full-text tooltip
         prompt_display = (params['prompt'][:77] + '...') if len(params['prompt']) > 80 else params['prompt']
         prompt_title = params['prompt'].replace('"', '&quot;')
@@ -64,17 +93,18 @@ def update_queue_df_display():
         is_editing_current_task = editing_task_id == task_id
         task_status_val = task.get("status", "pending")
 
+        # Determine the display status based on the task's state
         if is_processing_current_task: status_display = "⏳ Processing"
         elif is_editing_current_task: status_display = "✏️ Editing"
-        elif task_status_val == "done": status_display = "✅ Done"
-        elif task_status_val == "error": status_display = f"❌ Error: {task.get('error_message', 'Unknown')}"
-        elif task_status_val == "aborted": status_display = "⏹️ Aborted"
+        elif status == "done": status_display = "✅ Done"
+        elif status == "error": status_display = f"❌ Error: {task.get('error_message', 'Unknown')}"
+        elif status == "aborted": status_display = "⏹️ Aborted"
         else: status_display = "⏸️ Pending"
-            
+
         data.append([
             task_id, status_display, "✖", "✎", # These match the new header order
             prompt_cell, f"{params.get('video_length', 0):.1f}s", img_md, "↑", "↓" # Updated to 'video_length'
         ])
-        
+
     # Return an empty DataFrame with the correct headers if the queue is empty
-    return gr.update(value=data) if data else gr.update(value=[], headers=["ID", "Status", "✖", "✎", "Prompt", "Length", "Input", "↑", "↓"], datatype=["number","markdown","markdown","markdown","markdown","str","markdown","markdown","markdown"], col_count=(9,"fixed"))
+    return gr.update(value=data) if data else gr.update(value=[], headers=["↑", "↓", "⏸️", "✎", "✖", "Status", "Prompt", "Image", "Length", "ID"], datatype=["markdown", "markdown", "markdown", "markdown", "markdown", "markdown", "markdown", "markdown", "str", "number"], col_count=(10, "dynamic"))

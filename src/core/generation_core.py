@@ -18,6 +18,7 @@ from diffusers_helper.bucket_tools import find_nearest_bucket
 from diffusers_helper.gradio.progress_bar import make_progress_bar_html
 from core import model_loader # Import model_loader
 from ui import metadata as metadata_manager
+# Import shared_state to access the canonical parameter lists
 from ui import shared_state as shared_state_module
 from core import generation_utils
 from .generation_utils import generate_roll_off_schedule
@@ -28,6 +29,7 @@ logger = logging.getLogger(__name__)
 def worker(
     # --- Task I/O & Identity ---
     task_id,
+    resume_latent_path,
     input_image,
     output_folder,
     output_queue_ref,
@@ -48,6 +50,8 @@ def worker(
     preview_specified_segments,
     # --- Environment & Debug Parameters ---
     fps,
+    auto_resume_frequency,
+    auto_resume_retention,
     latent_window_size,
     gpu_memory_preservation,
     use_teacache,
@@ -119,25 +123,15 @@ def worker(
         height, width = find_nearest_bucket(H, W, resolution=640)
         input_image_np = resize_and_center_crop(input_image, target_width=width, target_height=height)
 
+        # --- Parameter Management for Saving ---
+        # Create a dictionary of all parameters passed to the worker using locals().
+        # This makes it easy to select subsets for saving.
+        all_worker_params = locals()
+        # Select only the creative parameters for saving in metadata and resume files.
+        # This uses the canonical list from shared_state, ensuring consistency.
+        params_to_save = {key: all_worker_params[key] for key in shared_state_module.CREATIVE_PARAM_KEYS if key in all_worker_params}
         metadata_obj = PngInfo()
-        params_to_save_in_metadata = {
-            "prompt": prompt,
-            "negative_prompt": negative_prompt,
-            "seed": seed,
-            "video_length": video_length,
-            "steps": steps,
-            "real_cfg": real_cfg,
-            "distilled_cfg_start": distilled_cfg_start,
-            "variable_cfg_shape": variable_cfg_shape,
-            "distilled_cfg_end": distilled_cfg_end,
-            "roll_off_start": roll_off_start,
-            "roll_off_factor": roll_off_factor,
-            "guidance_rescale": guidance_rescale,
-            "preview_frequency": preview_frequency,
-            "preview_specified_segments": preview_specified_segments,
-            "fps": fps,
-        }
-        metadata_obj.add_text("parameters", json.dumps(params_to_save_in_metadata))
+        metadata_obj.add_text("parameters", json.dumps(params_to_save))
         initial_image_with_params_path = os.path.join(
             outputs_folder, f"{job_id}_initial_image_with_params.png"
         )
@@ -477,18 +471,19 @@ def worker(
             )
             if saved_file_path:
                 final_output_filename = saved_file_path
-                graceful_abort_preview_path = saved_file_path
+                graceful_pause_preview_path = saved_file_path
 
-            history_latents_for_abort = real_history_latents.clone()
+            history_latents_for_pause = real_history_latents.clone()
 
         # --- Post-loop logic ---
         success = True
 
     except (InterruptedError, KeyboardInterrupt) as e:
-        logger.info(f"Worker task {task_id} caught explicit abort signal: {e}")
-        generation_utils._signal_abort_to_ui(output_queue_ref, task_id, graceful_abort_preview_path)
+        logger.info(f"Worker task {task_id} caught explicit pause signal: {e}")
+        # Send the latent state for pause/resume
+        output_queue_ref.push(('paused_with_state', (task_id, history_latents_for_pause)))
         success = False
-        final_output_filename = graceful_abort_preview_path
+        final_output_filename = graceful_pause_preview_path
     except Exception as e:
         logger.error(f"Error in worker task {task_id}: {e}", exc_info=True)
         output_queue_ref.push(('error', (task_id, str(e))))

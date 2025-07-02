@@ -6,7 +6,8 @@ from .enums import ComponentKey as K
 from . import (
     metadata as metadata_manager,
     event_handlers,
-    shared_state as shared_state_module
+    shared_state as shared_state_module,
+    workspace as workspace_manager,
 )
 
 logger = logging.getLogger(__name__)
@@ -42,11 +43,12 @@ def wire_events(components: dict):
         components[K.ADD_TASK_BUTTON],
         components[K.METADATA_PROMPT_PREVIEW_UI],
         components[K.EXTRACTED_METADATA_STATE],
-        components[K.MODAL_TRIGGER_BOX]
-    ]
+        components[K.MODAL_TRIGGER_BOX],
+        components[K.RESUME_LATENT_PATH_STATE]
+    ] + creative_ui_components
 
     (components[K.IMAGE_FILE_INPUT_UI].upload(
-        fn=event_handlers.process_upload_and_show_image,
+        fn=workspace_manager.handle_file_drop,
         inputs=[components[K.IMAGE_FILE_INPUT_UI]],
         outputs=upload_outputs
     ).then(

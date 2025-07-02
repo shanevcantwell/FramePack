@@ -4,12 +4,14 @@
 import gradio as gr
 import json
 import os
+import zipfile
 import tempfile
 import logging
 
 from . import shared_state as shared_state_module
 from . import metadata as metadata_manager
 from .enums import ComponentKey as K
+from typing import Optional, Dict, Any, List, Tuple
 from . import legacy_support
 from PIL import Image
 
@@ -58,6 +60,39 @@ def save_settings_to_file(filepath, settings_dict):
         gr.Info(f"Workspace saved to {filepath}")
     except Exception as e:
         logger.error(f"Error saving workspace: {e}", exc_info=True)
+
+def _apply_settings_dict_to_ui(settings_dict: Dict[K, Any], return_updates=True) -> List[Any]:
+    """
+    Takes a dictionary of settings and returns Gradio updates.
+    This is a refactored helper to be used by both workspace and resume loading.
+    """
+    default_values = get_default_values_map()
+    final_settings = {**default_values, **settings_dict}
+    output_values = []
+
+    # Iterate over the keys from the defaults map to ensure all settings are handled.
+    for key in default_values.keys():
+        value = final_settings.get(key, default_values[key])
+        try:
+            # This block ensures that values from JSON (which are often strings)
+            # are converted to the correct type for the UI components.
+            if key in [K.SEED_UI, K.LATENT_WINDOW_SIZE_UI, K.STEPS_UI, K.MP4_CRF_UI, K.PREVIEW_FREQUENCY_UI, K.ROLL_OFF_START_UI, K.FPS_UI, K.AUTO_RESUME_FREQUENCY_UI, K.AUTO_RESUME_RETENTION_UI]:
+                value = int(float(value))
+            elif key in [K.TOTAL_SECOND_LENGTH_UI, K.CFG_UI, K.GS_UI, K.RS_UI, K.GPU_MEMORY_PRESERVATION_UI, K.GS_FINAL_UI, K.ROLL_OFF_FACTOR_UI]:
+                value = float(value)
+            elif key in [K.USE_TEACACHE_UI, K.USE_FP32_TRANSFORMER_OUTPUT_CHECKBOX_UI]:
+                value = bool(value)
+        except (ValueError, TypeError):
+            value = default_values.get(key)
+            gr.Warning(f"Invalid value for {key} in loaded settings. Reverting to default.")
+        output_values.append(value)
+
+    if return_updates:
+        # This is for Gradio's `outputs` list
+        return [gr.update(value=v) for v in output_values]
+    else:
+        # This is for direct use
+        return output_values
 
 def load_settings_from_file(filepath, return_updates=True):
     """Loads settings from a JSON file and returns Gradio updates or raw values."""
@@ -137,6 +172,97 @@ def get_initial_output_folder_from_settings():
     return default_output_folder_path
 
 # --- UI Handler Functions ---
+def handle_file_drop(temp_file_data: Any) -> Tuple:
+    """
+    Unified handler for files dropped on the main input. It intelligently
+    determines if the file is an image or a .goan_resume package and
+    processes it accordingly.
+    """
+    filepath = None
+    if isinstance(temp_file_data, str):
+        filepath = temp_file_data
+    elif hasattr(temp_file_data, 'name'):
+        filepath = temp_file_data.name
+
+    num_workspace_outputs = len(get_default_values_map())
+    # 9 standard outputs + all workspace outputs
+    total_outputs = standard_outputs + num_workspace_outputs # this needs to be fixed to test the length of standard_outputs
+
+    if not filepath:
+        return (gr.update(),) * total_outputs # Return no-op updates for all outputs
+
+    # --- Case 1: It's a resume file ---
+    if filepath.endswith(('.goan_resume', '.zip')):
+        try:
+            with tempfile.TemporaryDirectory() as temp_dir:
+                with zipfile.ZipFile(filepath, 'r') as zf:
+                    # Signature check
+                    if 'params.json' not in zf.namelist() or 'latent_history.pt' not in zf.namelist():
+                        raise ValueError("Not a valid resume file")
+
+                    # Extract all files
+                    zf.extractall(temp_dir)
+
+                    # Load params.json
+                    params_path = os.path.join(temp_dir, 'params.json')
+                    with open(params_path, 'r', encoding='utf-8') as f:
+                        params_dict = json.load(f)
+
+                    # Convert string keys to enums for _apply_settings_dict_to_ui
+                    valid_keys = {item.value for item in K}
+                    settings_dict = {K(k): v for k, v in params_dict.items() if k in valid_keys}
+
+                    # Apply settings to UI
+                    ui_updates = _apply_settings_dict_to_ui(settings_dict, return_updates=True)
+
+                    # Load source image if present
+                    image_update = gr.update()
+                    image_path = os.path.join(temp_dir, 'source_image.png')
+                    if os.path.exists(image_path):
+                        try:
+                            pil_image = Image.open(image_path)
+                            image_update = gr.update(value=pil_image, visible=True)
+                        except Exception as e:
+                            logger.warning(f"Could not load source image from resume file: {e}")
+                            image_update = gr.update(visible=False)
+                    else:
+                        image_update = gr.update(visible=False)
+
+                    # Save latent path to state (for resume)
+                    latent_path = os.path.join(temp_dir, 'latent_history.pt')
+                    latent_path_update = gr.update(value=latent_path)
+
+                    # Compose the output tuple:
+                    output_tuple = (image_update, latent_path_update) + tuple(ui_updates) + (gr.update(),) * (total_outputs - 2 - len(ui_updates))
+                    return output_tuple
+
+        except Exception as e:
+            logger.error(f"Error loading resume file: {e}", exc_info=True)
+            gr.Warning(f"Could not load resume file: {e}")
+            return (gr.update(),) * total_outputs
+
+    # --- Case 2: It's an image file ---
+    try:
+        pil_image = Image.open(filepath)
+        image_update = gr.update(value=pil_image, visible=True)
+
+        # Use shared metadata extraction
+        metadata_dict = metadata_manager.extract_metadata_from_pil_image(pil_image)
+
+        if metadata_dict:
+            valid_keys = {item.value for item in K}
+            settings_dict = {K(k): v for k, v in metadata_dict.items() if k in valid_keys}
+            ui_updates = _apply_settings_dict_to_ui(settings_dict, return_updates=True)
+            output_tuple = (image_update,) + tuple(ui_updates) + (gr.update(),) * (total_outputs - 1 - len(ui_updates))
+            return output_tuple
+        else:
+            # No metadata: only update the image, leave all other fields unchanged
+            return (image_update,) + (gr.update(),) * (total_outputs - 1)
+    except Exception as e:
+        logger.warning(f"Could not load image: {e}")
+        # Clear the image box and leave all other fields unchanged
+        image_update = gr.update(value=None, visible=False)
+        return (image_update,) + (gr.update(),) * (total_outputs - 1)
 
 def save_workspace(*ui_values_tuple):
     """Prepares the full workspace settings as a JSON string for download."""
@@ -262,3 +388,50 @@ def load_image_from_path(image_path):
     has_image = pil_image is not None
     return (gr.update(value=pil_image, visible=has_image), gr.update(interactive=has_image),
             gr.update(interactive=has_image), gr.update(visible=not has_image))
+
+def load_settings_from_json(filepath=SETTINGS_FILENAME):
+    """
+    Loads settings from a JSON file and returns as a dictionary.
+    This is a simplified loader for direct JSON access, bypassing any UI updates.
+
+    If the file doesn't exist, or an error occurs, returns an empty dictionary.
+    """
+    if not os.path.exists(filepath):
+        return {}
+
+    try:
+        with open(filepath, 'r', encoding='utf-8') as f:
+            loaded_settings_str_keys = json.load(f)
+            # Create a set of all valid string values from the ComponentKey enum for a robust check.
+            valid_keys = {item.value for item in K}
+            loaded_settings = {K(k): v for k, v in loaded_settings_str_keys.items() if k in valid_keys}
+
+        legacy_support.convert_legacy_params(loaded_settings)
+        logger.info(f"Settings loaded from {filepath}")
+        return loaded_settings
+    except Exception as e:
+        logger.error(f"Error loading settings from {filepath}: {e}", exc_info=True)
+        return {}
+
+    """
+    Loads settings from a JSON file and returns as a dictionary.
+    This is a simplified loader for direct JSON access, bypassing any UI updates.
+
+    If the file doesn't exist, or an error occurs, returns an empty dictionary.
+    """
+    if not os.path.exists(filepath):
+        return {}
+
+    try:
+        with open(filepath, 'r', encoding='utf-8') as f:
+            loaded_settings_str_keys = json.load(f)
+            # Create a set of all valid string values from the ComponentKey enum for a robust check.
+            valid_keys = {item.value for item in K}
+            loaded_settings = {K(k): v for k, v in loaded_settings_str_keys.items() if k in valid_keys}
+
+        legacy_support.convert_legacy_params(loaded_settings)
+        logger.info(f"Settings loaded from {filepath}")
+        return loaded_settings
+    except Exception as e:
+        logger.error(f"Error loading settings from {filepath}: {e}", exc_info=True)
+        return {}
