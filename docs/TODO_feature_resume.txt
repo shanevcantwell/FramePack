@@ -1,0 +1,53 @@
+The core issue is that while the design documents describe a complete, agent-driven pause architecture, the code has not yet fully implemented it. The following steps will bridge that gap.
+
+1. Complete the Resume File Handler
+The entry point for resuming a task, workspace.handle_file_drop, is currently incomplete. It needs to be finished to correctly process .goan_resume files.
+
+Unpack the Archive: The function must fully unzip the .goan_resume file into a temporary directory.
+Load Parameters: It needs to read params.json from the archive and use the _apply_settings_dict_to_ui helper to populate all the creative UI controls.
+Load Source Image: It must load source_image.png and display it in the INPUT_IMAGE_DISPLAY.
+Persist Latent State: The path to the extracted latent_history.pt needs to be saved into the RESUME_LATENT_PATH_STATE so it can be passed to the worker when the task is added to the queue.
+Update UI Labels: Implement the logic to dynamically change the VIDEO_LENGTH_SLIDER slider's label to "Additional Video Length (s)" to provide clear user feedback.
+2. Implement the Agent-Driven Pause Logic
+The current ProcessingAgent only handles "start" and "stop". The crucial "pause" orchestration is missing.
+
+Modify the Worker (generation_core.py):
+
+The try...except (InterruptedError, KeyboardInterrupt) block needs to be updated. When an interruption occurs, it must push a new message, like ('interrupted_with_state', (task_id, history_latents_for_abort)), to the output_queue_ref before it sends the final ('aborted', ...) signal. This provides the agent with the necessary data to save the state.
+Enhance the Agent (agents.py):
+
+Add a _handle_pause method that sets an internal self.pause_requested = True flag and then sets the global interrupt_flag.
+In the _processing_loop, after receiving the 'aborted' signal from the worker, check if self.pause_requested is True.
+If it is, the agent must take the history_latents it received from the 'interrupted_with_state' message and call generation_utils.save_resume_state() to create the .goan_resume file.
+After saving, the agent should push a new ('paused', (task_id, path_to_resume_file)) message to the ui_update_queue.
+3. Wire the Resume State into the Queue and Worker
+The UI needs to pass the resume information to the backend, and the backend needs to use it.
+
+Update Queue Logic (queue.py and switchboard_queue.py):
+
+The add_or_update_task_in_queue function must be modified to accept resume_latent_path as an input.
+The switchboard must be updated to pass the RESUME_LATENT_PATH_STATE component as an input to this function.
+When a task is created, if resume_latent_path is present, it must be added to the task's parameter dictionary.
+The add_task_outputs in the switchboard must include RESUME_LATENT_PATH_STATE so it can be cleared (gr.update(value=None)) after the task is added.
+Update Worker Logic (generation_core.py):
+
+At the beginning of the worker function, it must check if the resume_latent_path parameter is valid.
+If it is, instead of initializing history_latents as an empty tensor, it must load the tensor from the file using torch.load().
+It should then perform an initial VAE decode on the loaded latents to populate history_pixels for seamless blending on the first new segment.
+4. Finalize the UI Feedback Loop
+The UI needs to react to the new "paused" event from the agent.
+
+Update the UI Listener (queue_processing.py):
+
+The process_task_queue_and_listen generator loop needs a new elif flag == "paused": condition.
+When this event is received, it should yield an update to the hidden RESUME_DOWNLOADER_UI component, setting its value to the path of the .goan_resume file.
+Update the Switchboard (switchboard_queue.py):
+
+The process_q_outputs list must be updated to include components[K.RESUME_DOWNLOADER_UI] as its first output, so it can receive the update from the listener.
+A .then() call with a JavaScript function (js="() => { ... }) must be added to the PROCESS_QUEUE_BUTTON's click chain to programmatically click the hidden download link, triggering the browser download.
+5. Refactor Legacy "Abort" Terminology
+Replace all uses of "abort" (e.g., variable names, log messages, function names like _signal_abort_to_ui) with "pause" or "paused" where the intent is to support resumable interruption.
+Ensure worker() and agent logic use "paused_with_state" for user-initiated, resumable interruptions.
+Update UI and queue status labels to reflect "Paused" instead of "Aborted".
+Remove or clarify any remaining references to "abort" that refer to non-resumable cancellation, if such a state is not needed.
+Completing these five areas will result in a fully functional, robust, and user-friendly pause and resume system that matches the architecture described in the design documents.
