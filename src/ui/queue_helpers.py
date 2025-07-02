@@ -53,12 +53,12 @@ def update_queue_df_display():
         prompt_display = (params['prompt'][:77] + '...') if len(params['prompt']) > 80 else params['prompt']
         prompt_title = params['prompt'].replace('"', '&quot;')
         prompt_cell = f'<span title="{prompt_title}">{prompt_display}</span>'
-        
+
         # Create an image thumbnail for the DataFrame
         img_uri = np_to_base64_uri(params.get('input_image'), format="png")
         thumbnail_size = "50px"
         img_md = f'<img src="{img_uri}" alt="Input" style="max-width:{thumbnail_size}; max-height:{thumbnail_size}; display:block; margin:auto; object-fit:contain;" />' if img_uri else ""
-        
+
         # Determine the display status based on the task's state
         is_processing_current_task = processing and i == 0
         is_editing_current_task = editing_task_id == task_id
@@ -73,7 +73,7 @@ def update_queue_df_display():
             
         data.append([
             task_id, status_display, "✖", "✎", # These match the new header order
-            prompt_cell, f"{params.get('total_second_length', 0):.1f}s", img_md, "↑", "↓" # Remaining columns
+            prompt_cell, f"{params.get('video_length', 0):.1f}s", img_md, "↑", "↓" # Updated to 'video_length'
         ])
         
     # Return an empty DataFrame with the correct headers if the queue is empty

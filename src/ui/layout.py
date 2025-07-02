@@ -130,6 +130,7 @@ def create_ui():
         with gr.Row(equal_height=False):
             with gr.Column(scale=1):
                 with gr.Accordion("Advanced Settings", open=False):
+<<<<<<< Updated upstream
                     components[K.TOTAL_SEGMENTS_DISPLAY_UI] = gr.Markdown("Calculated Total Segments: N/A")
                     components[K.PREVIEW_FREQUENCY_UI] = gr.Slider(label="Preview Freq.", minimum=0, maximum=100, value=5, step=1)
                     components[K.SEGMENTS_TO_DECODE_CSV_UI] = gr.Textbox(label="Preview Segments CSV", value="") # Flagged for key rename
@@ -142,11 +143,26 @@ def create_ui():
                     components[K.CFG_UI] = gr.Slider(label="CFG (Real)", minimum=1.0, maximum=8.0, value=1.5, step=0.01)
                     components[K.STEPS_UI] = gr.Slider(label="Steps", minimum=1, maximum=100, value=25, step=1)
                     components[K.RS_UI] = gr.Slider(label="RS", minimum=0.0, maximum=32.0, value=0.0, step=0.01, visible=False) # Still need to figure out what RS (CFG "scale"?) is even for. Required for Hunyuan.
+=======
+                    components[K.TOTAL_SEGMENTS_DISPLAY] = gr.Markdown("Calculated Total Segments: N/A")
+                    components[K.PREVIEW_FREQUENCY_SLIDER] = gr.Slider(label="Preview Freq.", minimum=0, maximum=100, value=5, step=1)
+                    components[K.PREVIEW_SPECIFIED_SEGMENTS_TEXTBOX] = gr.Textbox(label="Preview Segments CSV", value="")
+                    with gr.Row():
+                        components[K.DISTILLED_CFG_START_SLIDER] = gr.Slider(label="Distilled CFG Start", minimum=1.0, maximum=32.0, value=10.0, step=0.01)
+                        components[K.VARIABLE_CFG_SHAPE_RADIO] = gr.Radio(["Off", "Linear", "Roll-off"], label="Variable CFG", value="Off")
+                        components[K.DISTILLED_CFG_END_SLIDER] = gr.Slider(label="Distilled CFG End", minimum=1.0, maximum=32.0, value=10.0, step=0.01, interactive=False)
+                    components[K.ROLL_OFF_START_SLIDER] = gr.Slider(label="Roll-off Start %", minimum=0, maximum=100, value=75, step=1, visible=False)
+                    components[K.ROLL_OFF_FACTOR_SLIDER] = gr.Slider(label="Roll-off Curve Factor", minimum=0.25, maximum=4.0, value=1.0, step=0.05, visible=False)
+                    components[K.REAL_CFG_SLIDER] = gr.Slider(label="CFG (Real)", minimum=1.0, maximum=8.0, value=1.5, step=0.01)
+                    components[K.STEPS_SLIDER] = gr.Slider(label="Steps", minimum=1, maximum=100, value=25, step=1)
+                    components[K.GUIDANCE_RESCALE_SLIDER] = gr.Slider(label="RS", minimum=0.0, maximum=32.0, value=0.0, step=0.01, visible=False)
+>>>>>>> Stashed changes
 
                 with gr.Accordion("LoRA Settings", open=False, visible=True) as lora_accordion:
                     components[K.LORA_ACCORDION] = lora_accordion # Naming convention?
                     gr.Markdown("🧪 Experimental LoRA support. Upload a `.safetensors` file. Applied before generation.")
                     components[K.LORA_UPLOAD_BUTTON] = gr.UploadButton("Upload LoRA", file_types=[".safetensors"], file_count="single", size="sm")
+<<<<<<< Updated upstream
                     with gr.Row(visible=False, variant="panel") as lora_row_0_ctx: # I'm pretty sure this is all meant to be a dict for future functionality of multiple LoRAs and not hard coded _0 naming scheme
                         components[K.LORA_ROW_0] = lora_row_0_ctx
                         components[K.LORA_NAME_0] = gr.Textbox(label="LoRA Name", interactive=False, scale=2)
@@ -168,20 +184,37 @@ def create_ui():
                     components[K.RELAUNCH_NOTIFICATION_MD] = gr.Markdown("ℹ️ **Restart required** for new output path to take effect.", visible=False) # Why is does this have a key and not hard-coded at the point of the Save as Default.click() definition?
                     components[K.RELAUNCH_BUTTON] = gr.Button("Save Current State & Relaunch", variant="primary", visible=False) # Non-functional and hidden from UI
                     components[K.RESET_UI_BUTTON] = gr.Button("Save & Refresh UI", variant="secondary") # Non-functional and hidden from UI
+=======
+                    with gr.Row(visible=False, variant="panel") as lora_row_0_ctx:
+                        components[K.LORA_ROW] = lora_row_0_ctx
+                        components[K.LORA_NAME] = gr.Textbox(label="LoRA Name", interactive=False, scale=2)
+                        components[K.LORA_WEIGHT] = gr.Slider(label="Weight", minimum=-2.0, maximum=2.0, step=0.05, value=1.0, scale=3)
+                        components[K.LORA_TARGETS] = gr.CheckboxGroup(label="Target Models", choices=["transformer", "text_encoder", "text_encoder_2"], value=["text_encoder"], scale=3)
 
-                with gr.Row():
-                    # These buttons are being hidden for now, pending future functionality.
-                    components[K.WORKSPACE_DOWNLOADER_UI] = gr.File(visible=False, file_count="single", elem_id="workspace_downloader_hidden_file",)
-                    components[K.SAVE_WORKSPACE_BUTTON] = gr.Button("Save Workspace", variant="secondary", visible=False)
-                    components[K.LOAD_WORKSPACE_BUTTON] = gr.UploadButton("Load Workspace", file_types=[".json"], visible=False)
-                # This button is being hidden for now, pending future functionality.
-                components[K.RESET_UI_BUTTON] = gr.Button("Save & Refresh UI", variant="secondary", visible=False)
-                components[K.SHUTDOWN_BUTTON] = gr.Button("Save All & Exit", variant="stop", visible=False)
+                with gr.Accordion("Debug Settings", open=False):
+                    components[K.USE_TEACACHE_CHECKBOX] = gr.Checkbox(label='Use TeaCache', value=True)
+                    # Hide the FP32 checkbox on legacy GPUs, as it's forced on in the backend.
+                    is_legacy_gpu = shared_state_module.shared_state_instance.system_info.get('is_legacy_gpu', False)
+                    components[K.USE_FP32_TRANSFORMER_OUTPUT_CHECKBOX] = gr.Checkbox(
+                        label="Use FP32 Transformer Output", value=False, visible=not is_legacy_gpu)
+                    components[K.GPU_MEMORY_PRESERVATION_SLIDER] = gr.Slider(label="GPU Preserved (GB)", minimum=4, maximum=128, value=6.0, step=0.1)
+                    components[K.FPS_SLIDER] = gr.Slider(label="MP4 Framerate (FPS)", minimum=1, maximum=60, value=30, step=1)
+                    components[K.MP4_CRF_SLIDER] = gr.Slider(label="MP4 CRF", minimum=0, maximum=51, value=18, step=1)
+                    components[K.LATENT_WINDOW_SIZE_SLIDER] = gr.Slider(label="Latent Window Size", minimum=1, maximum=33, value=9, step=1, visible=False)
+                    components[K.OUTPUT_FOLDER_TEXTBOX] = gr.Textbox(label="Output Folder", value=workspace_manager.outputs_folder)
+                    components[K.SAVE_AS_DEFAULT_BUTTON] = gr.Button("Save as Default", variant="secondary")
+                    components[K.RELAUNCH_NOTIFICATION_MD] = gr.Markdown("ℹ️ **Restart required** for new output path to take effect.", visible=False)
+                    # The following buttons are obsolete and removed per new contract:
+                    # components[K.RELAUNCH_BUTTON] = gr.Button("Save Current State & Relaunch", variant="primary", visible=False)
+                    # components[K.RESET_UI_BUTTON] = gr.Button("Save & Refresh UI", variant="secondary")
+>>>>>>> Stashed changes
+
+                # Remove obsolete workspace and shutdown controls per new contract
 
             with gr.Column(scale=1):
                 gr.Markdown("## Live Preview & Output")
-                components[K.CURRENT_TASK_PROGRESS_DESC_UI] = gr.Markdown('')
-                components[K.CURRENT_TASK_PROGRESS_BAR_UI] = gr.HTML('')
-                components[K.LAST_FINISHED_VIDEO_UI] = gr.Video(interactive=True, autoplay=False, height=540)
+                components[K.CURRENT_TASK_PROGRESS_DESCRIPTION] = gr.Markdown('')
+                components[K.CURRENT_TASK_PROGRESS_BAR] = gr.HTML('')
+                components[K.LAST_FINISHED_VIDEO] = gr.Video(interactive=True, autoplay=False, height=540)
 
     return components

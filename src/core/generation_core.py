@@ -39,13 +39,18 @@ def worker(
     steps,
     real_cfg,
     distilled_cfg_start,
+<<<<<<< Updated upstream
     distilled_cfg_end,
     variable_cfg_shape,
+=======
+    variable_cfg_shape,
+    distilled_cfg_end,
+>>>>>>> Stashed changes
     roll_off_start,
     roll_off_factor,
     guidance_rescale,
     preview_frequency,
-    segments_to_decode_csv,
+    preview_specified_segments,
     # --- Environment & Debug Parameters ---
     fps,
     latent_window_size,
@@ -69,24 +74,32 @@ def worker(
 
     # --- Job Initialization ---
     total_latent_sections, job_id = generation_utils.initialize_job(
+<<<<<<< Updated upstream
         video_length=video_length,
+=======
+        total_second_length=video_length,
+>>>>>>> Stashed changes
         fps=fps,
         latent_window_size=latent_window_size,
         task_id=task_id,
         output_queue_ref=output_queue_ref,
     )
     parsed_segments_to_decode_set = set()
-    if segments_to_decode_csv:
+    if preview_specified_segments:
         try:
-            parsed_segments_to_decode_set = {int(s.strip()) for s in segments_to_decode_csv.split(",") if s.strip()}
+            parsed_segments_to_decode_set = {int(s.strip()) for s in preview_specified_segments.split(",") if s.strip()}
         except ValueError:
-            logger.warning(f"Task {task_id}: Could not parse 'Segments to Decode CSV': \"{segments_to_decode_csv}\".")
+            logger.warning(f"Task {task_id}: Could not parse 'Preview Specified Segments': \"{preview_specified_segments}\".")
 
     final_output_filename = None
     success = False
 
     initial_gs_from_ui = distilled_cfg_start
+<<<<<<< Updated upstream
     distilled_cfg_end_value_for_schedule = (
+=======
+    gs_final_value_for_schedule = (
+>>>>>>> Stashed changes
         distilled_cfg_end if distilled_cfg_end is not None else initial_gs_from_ui
     )
 
@@ -128,13 +141,21 @@ def worker(
             "steps": steps,
             "real_cfg": real_cfg,
             "distilled_cfg_start": distilled_cfg_start,
+<<<<<<< Updated upstream
             "distilled_cfg_end": distilled_cfg_end,
             "guidance_rescale": guidance_rescale,
             "preview_frequency": preview_frequency,
             "segments_to_decode_csv": segments_to_decode_csv,
             "variable_cfg_shape": variable_cfg_shape,
+=======
+            "variable_cfg_shape": variable_cfg_shape,
+            "distilled_cfg_end": distilled_cfg_end,
+>>>>>>> Stashed changes
             "roll_off_start": roll_off_start,
             "roll_off_factor": roll_off_factor,
+            "guidance_rescale": guidance_rescale,
+            "preview_frequency": preview_frequency,
+            "preview_specified_segments": preview_specified_segments,
             "fps": fps,
         }
         metadata_obj.add_text("parameters", json.dumps(params_to_save_in_metadata))
@@ -345,15 +366,15 @@ def worker(
 
             current_segment_gs_to_use = initial_gs_from_ui
             # Only apply a schedule if one is selected and there's more than one segment.
-            if gs_schedule_shape != 'Off' and total_latent_sections > 1:
+            if variable_cfg_shape != 'Off' and total_latent_sections > 1:
                 # Calculate progress as a value from 0.0 to 1.0 over the segments.
                 progress = latent_padding_iteration / (total_latent_sections - 1)
 
-                if gs_schedule_shape == 'Linear':
+                if variable_cfg_shape == 'Linear':
                     # Linear interpolation from start to end CFG.
                     current_segment_gs_to_use = initial_gs_from_ui + (gs_final_value_for_schedule - initial_gs_from_ui) * progress
                
-                elif gs_schedule_shape == 'Roll-off':
+                elif variable_cfg_shape == 'Roll-off':
                     # Roll-off logic adapted for per-segment scheduling.
                     roll_off_start_point = roll_off_start / 100.0
                     if progress < roll_off_start_point:
@@ -369,9 +390,9 @@ def worker(
                 width=width,
                 height=height,
                 frames=num_frames,
-                real_guidance_scale=cfg,
+                real_guidance_scale=real_cfg,
                 distilled_guidance_scale=current_segment_gs_to_use,
-                guidance_rescale=rs,
+                guidance_rescale=guidance_rescale,
                 num_inference_steps=steps,
                 generator=rnd,
                 prompt_embeds=llama_vec.to(transformer.device),

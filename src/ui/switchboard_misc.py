@@ -1,3 +1,4 @@
+<<<<<<< Updated upstream
 # ui/switchboard_misc.py
 import gradio as gr
 import logging
@@ -33,3 +34,40 @@ def wire_events(components: dict):
     segment_recalc_triggers = [components[K.TOTAL_SECOND_LENGTH_UI], components[K.LATENT_WINDOW_SIZE_UI], components[K.FPS_UI]]
     for ctrl in segment_recalc_triggers:
         ctrl.change(fn=event_handlers.ui_update_total_segments, inputs=segment_recalc_triggers, outputs=[components[K.TOTAL_SEGMENTS_DISPLAY_UI]])
+=======
+# ui/switchboard_misc.py
+import gradio as gr
+import logging
+
+from .enums import ComponentKey as K
+from . import event_handlers
+
+logger = logging.getLogger(__name__)
+
+def wire_events(components: dict):
+    """Wires up other miscellaneous UI controls."""
+    logger.info("Wiring miscellaneous control events...")
+
+    def update_scheduler_visibility(choice: str):
+        """Shows/hides scheduler sliders based on the selected schedule type."""
+        is_linear = (choice == "Linear")
+        is_rolloff = (choice == "Roll-off")
+        show_final_gs = is_linear or is_rolloff
+        show_rolloff_sliders = is_rolloff
+
+        return {
+            components[K.DISTILLED_CFG_END_SLIDER]: gr.update(visible=show_final_gs, interactive=show_final_gs),
+            components[K.ROLL_OFF_START_SLIDER]: gr.update(visible=show_rolloff_sliders),
+            components[K.ROLL_OFF_FACTOR_SLIDER]: gr.update(visible=show_rolloff_sliders),
+        }
+
+    components[K.VARIABLE_CFG_SHAPE_RADIO].change(
+        fn=update_scheduler_visibility,
+        inputs=[components[K.VARIABLE_CFG_SHAPE_RADIO]],
+        outputs=[components[k] for k in [K.DISTILLED_CFG_END_SLIDER, K.ROLL_OFF_START_SLIDER, K.ROLL_OFF_FACTOR_SLIDER]]
+    )
+
+    segment_recalc_triggers = [components[K.VIDEO_LENGTH_SLIDER], components[K.LATENT_WINDOW_SIZE_SLIDER], components[K.FPS_SLIDER]]
+    for ctrl in segment_recalc_triggers:
+        ctrl.change(fn=event_handlers.ui_update_total_segments, inputs=segment_recalc_triggers, outputs=[components[K.TOTAL_SEGMENTS_DISPLAY]])
+>>>>>>> Stashed changes

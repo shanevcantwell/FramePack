@@ -51,23 +51,30 @@ shared_state_instance = SharedState()
 
 # --- UI and Parameter Mapping Constants ---
 # Centralized list of UI component keys for LoRA management.
-LORA_UI_KEYS = [K.LORA_UPLOAD_BUTTON_UI, K.LORA_ROW_0]
+# (Update or remove as needed based on your new enums.py)
+LORA_UI_KEYS = [K.LORA_UPLOAD_BUTTON, K.LORA_ROW]
 
 CREATIVE_UI_KEYS = [
-    K.PROMPT_UI, K.N_PROMPT_UI, K.TOTAL_SECOND_LENGTH_UI, K.SEED_UI, K.PREVIEW_FREQUENCY_UI,
-    K.SEGMENTS_TO_DECODE_CSV_UI, K.FPS_UI, K.GS_UI, K.GS_SCHEDULE_SHAPE_UI, K.GS_FINAL_UI,
-    K.ROLL_OFF_START_UI, K.ROLL_OFF_FACTOR_UI,
-    K.STEPS_UI, K.CFG_UI, K.RS_UI
+    K.POSITIVE_PROMPT, K.NEGATIVE_PROMPT, K.VIDEO_LENGTH_SLIDER, K.SEED, K.PREVIEW_FREQUENCY_SLIDER,
+    K.PREVIEW_SPECIFIED_SEGMENTS_TEXTBOX, K.FPS_SLIDER, K.DISTILLED_CFG_START_SLIDER, K.VARIABLE_CFG_SHAPE_RADIO,
+    K.DISTILLED_CFG_END_SLIDER, K.ROLL_OFF_START_SLIDER, K.ROLL_OFF_FACTOR_SLIDER,
+    K.STEPS_SLIDER, K.REAL_CFG_SLIDER, K.GUIDANCE_RESCALE_SLIDER
 ]
 ENVIRONMENT_UI_KEYS = [
+<<<<<<< Updated upstream
     K.USE_TEACACHE_UI, K.USE_FP32_TRANSFORMER_OUTPUT_CHECKBOX_UI, K.USE_STANDARD_FPS_CHECKBOX_UI,
     K.GPU_MEMORY_PRESERVATION_UI, K.MP4_CRF_UI, K.OUTPUT_FOLDER_UI_CTRL, K.LATENT_WINDOW_SIZE_UI,
     K.BACKUP_LATENTS_FREQUENCY_UI, K.BACKUP_LATENTS_KEPT_UI
+=======
+    K.USE_TEACACHE_CHECKBOX, K.USE_FP32_TRANSFORMER_OUTPUT_CHECKBOX, K.GPU_MEMORY_PRESERVATION_SLIDER,
+    K.MP4_CRF_SLIDER, K.OUTPUT_FOLDER_TEXTBOX, K.LATENT_WINDOW_SIZE_SLIDER
+>>>>>>> Stashed changes
 ]
 ALL_TASK_UI_KEYS = CREATIVE_UI_KEYS + ENVIRONMENT_UI_KEYS
 
 # This is the single source of truth for converting UI component names to worker parameter names.
 UI_TO_WORKER_PARAM_MAP = {
+<<<<<<< Updated upstream
     K.PROMPT_UI: 'prompt',
     K.N_PROMPT_UI: 'n_prompt',
     K.TOTAL_SECOND_LENGTH_UI: 'total_second_length',
@@ -92,6 +99,29 @@ UI_TO_WORKER_PARAM_MAP = {
     K.MP4_CRF_UI: 'mp4_crf',
     K.OUTPUT_FOLDER_UI_CTRL: 'output_folder',
     K.LATENT_WINDOW_SIZE_UI: 'latent_window_size'
+=======
+    K.POSITIVE_PROMPT: 'prompt',
+    K.NEGATIVE_PROMPT: 'negative_prompt',
+    K.VIDEO_LENGTH_SLIDER: 'video_length',
+    K.SEED: 'seed',
+    K.PREVIEW_FREQUENCY_SLIDER: 'preview_frequency',
+    K.PREVIEW_SPECIFIED_SEGMENTS_TEXTBOX: 'preview_specified_segments',
+    K.FPS_SLIDER: 'fps',
+    K.DISTILLED_CFG_START_SLIDER: 'distilled_cfg_start',
+    K.VARIABLE_CFG_SHAPE_RADIO: 'variable_cfg_shape',
+    K.DISTILLED_CFG_END_SLIDER: 'distilled_cfg_end',
+    K.ROLL_OFF_START_SLIDER: 'roll_off_start',
+    K.ROLL_OFF_FACTOR_SLIDER: 'roll_off_factor',
+    K.STEPS_SLIDER: 'steps',
+    K.REAL_CFG_SLIDER: 'real_cfg',
+    K.GUIDANCE_RESCALE_SLIDER: 'guidance_rescale',
+    K.USE_TEACACHE_CHECKBOX: 'use_teacache',
+    K.USE_FP32_TRANSFORMER_OUTPUT_CHECKBOX: 'use_fp32_transformer_output',
+    K.GPU_MEMORY_PRESERVATION_SLIDER: 'gpu_memory_preservation',
+    K.MP4_CRF_SLIDER: 'mp4_crf',
+    K.OUTPUT_FOLDER_TEXTBOX: 'output_folder',
+    K.LATENT_WINDOW_SIZE_SLIDER: 'latent_window_size'
+>>>>>>> Stashed changes
 }
 
 # The CREATIVE_PARAM_KEYS list defines the canonical names for parameters that are saved

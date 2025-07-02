@@ -27,27 +27,27 @@ def get_default_values_map():
     Returns a dictionary with the default values for all UI settings.
     """
     return {
-        K.PROMPT_UI: '',
-        K.N_PROMPT_UI: '',
-        K.TOTAL_SECOND_LENGTH_UI: 5.0,
-        K.SEED_UI: -1,
-        K.PREVIEW_FREQUENCY_UI: 5,
-        K.SEGMENTS_TO_DECODE_CSV_UI: '',
-        K.FPS_UI: 30,
-        K.GS_UI: 10.0,
-        K.GS_SCHEDULE_SHAPE_UI: 'Off',
-        K.GS_FINAL_UI: 10.0,
-        K.ROLL_OFF_START_UI: 75,
-        K.ROLL_OFF_FACTOR_UI: 1.0,
-        K.STEPS_UI: 25,
-        K.CFG_UI: 1.0,
-        K.RS_UI: 0.0,
-        K.USE_TEACACHE_UI: True,
-        K.USE_FP32_TRANSFORMER_OUTPUT_CHECKBOX_UI: False,
-        K.GPU_MEMORY_PRESERVATION_UI: 6.0,
-        K.MP4_CRF_UI: 18,
-        K.OUTPUT_FOLDER_UI_CTRL: outputs_folder,
-        K.LATENT_WINDOW_SIZE_UI: 9,
+        K.POSITIVE_PROMPT: '',
+        K.NEGATIVE_PROMPT: '',
+        K.VIDEO_LENGTH_SLIDER: 5.0,
+        K.SEED: -1,
+        K.PREVIEW_FREQUENCY_SLIDER: 5,
+        K.PREVIEW_SPECIFIED_SEGMENTS_TEXTBOX: '',
+        K.FPS_SLIDER: 30,
+        K.DISTILLED_CFG_START_SLIDER: 10.0,
+        K.VARIABLE_CFG_SHAPE_RADIO: 'Off',
+        K.DISTILLED_CFG_END_SLIDER: 10.0,
+        K.ROLL_OFF_START_SLIDER: 75,
+        K.ROLL_OFF_FACTOR_SLIDER: 1.0,
+        K.STEPS_SLIDER: 25,
+        K.REAL_CFG_SLIDER: 1.0,
+        K.GUIDANCE_RESCALE_SLIDER: 0.0,
+        K.USE_TEACACHE_CHECKBOX: True,
+        K.USE_FP32_TRANSFORMER_OUTPUT_CHECKBOX: False,
+        K.GPU_MEMORY_PRESERVATION_SLIDER: 6.0,
+        K.MP4_CRF_SLIDER: 18,
+        K.OUTPUT_FOLDER_TEXTBOX: outputs_folder,
+        K.LATENT_WINDOW_SIZE_SLIDER: 9,
     }
 
 def save_settings_to_file(filepath, settings_dict):
@@ -89,11 +89,18 @@ def load_settings_from_file(filepath, return_updates=True):
     for key in default_values.keys():
         value = final_settings.get(key, default_values[key])
         try:
-            if key in [K.SEED_UI, K.LATENT_WINDOW_SIZE_UI, K.STEPS_UI, K.MP4_CRF_UI, K.PREVIEW_FREQUENCY_UI, K.ROLL_OFF_START_UI, K.FPS_UI]:
+            if key in [
+                K.SEED, K.LATENT_WINDOW_SIZE_SLIDER, K.STEPS_SLIDER, K.MP4_CRF_SLIDER,
+                K.PREVIEW_FREQUENCY_SLIDER, K.ROLL_OFF_START_SLIDER, K.FPS_SLIDER
+            ]:
                 value = int(value)
-            elif key in [K.TOTAL_SECOND_LENGTH_UI, K.CFG_UI, K.GS_UI, K.RS_UI, K.GPU_MEMORY_PRESERVATION_UI, K.GS_FINAL_UI, K.ROLL_OFF_FACTOR_UI]:
+            elif key in [
+                K.VIDEO_LENGTH_SLIDER, K.REAL_CFG_SLIDER, K.DISTILLED_CFG_START_SLIDER,
+                K.GUIDANCE_RESCALE_SLIDER, K.GPU_MEMORY_PRESERVATION_SLIDER,
+                K.DISTILLED_CFG_END_SLIDER, K.ROLL_OFF_FACTOR_SLIDER
+            ]:
                 value = float(value)
-            elif key in [K.USE_TEACACHE_UI, K.USE_FP32_TRANSFORMER_OUTPUT_CHECKBOX_UI]:
+            elif key in [K.USE_TEACACHE_CHECKBOX, K.USE_FP32_TRANSFORMER_OUTPUT_CHECKBOX]:
                 value = bool(value)
         except (ValueError, TypeError):
             value = default_values.get(key)
@@ -118,10 +125,14 @@ def get_initial_output_folder_from_settings():
         try:
             with open(filename_to_check, 'r', encoding='utf-8') as f:
                 settings = json.load(f)
+            # Use new key name for output folder
+            if 'output_folder_textbox' in settings:
+                return os.path.expanduser(settings['output_folder_textbox'])
+            # Fallback for legacy key
             if 'output_folder_ui_ctrl' in settings:
                 return os.path.expanduser(settings['output_folder_ui_ctrl'])
         except Exception as e:
-            logger.warning(f"Could not load 'output_folder_ui_ctrl' from {filename_to_check}: {e}", exc_info=True)
+            logger.warning(f"Could not load output folder from {filename_to_check}: {e}", exc_info=True)
 
     return default_output_folder_path
 
