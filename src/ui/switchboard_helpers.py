@@ -19,7 +19,8 @@ def chain_event_updates(event, components: dict, update_segments: bool = False):
     button_state_outputs = event_handlers.get_button_state_outputs(components)
     event.then(
         fn=event_handlers.update_button_states,
-        inputs=[components[K.APP_STATE], components[K.INPUT_IMAGE_DISPLAY_UI], components[K.QUEUE_DF_DISPLAY_UI]],
+        inputs=[components[K.APP_STATE], components[K.INPUT_IMAGE_DISPLAY], components[K.IMAGE_FILE_INPUT]
+                ],
         outputs=button_state_outputs
     )
     if update_segments:

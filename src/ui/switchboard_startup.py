@@ -48,13 +48,13 @@ def wire_events(components: dict):
         outputs=image_ui_outputs
     ).then(
         fn=event_handlers.ui_update_total_segments,
-        inputs=[components[K.TOTAL_SECOND_LENGTH], components[K.LATENT_WINDOW_SIZE], components[K.FPS]],
+        inputs=[components[K.VIDEO_LENGTH_SLIDER], components[K.LATENT_WINDOW_SIZE_SLIDER], components[K.FPS_SLIDER]],
         outputs=[components[K.TOTAL_SEGMENTS_DISPLAY]]
     ).then(
         fn=event_handlers.update_button_states,
-        inputs=[components[K.APP_STATE], components[K.INPUT_IMAGE_DISPLAY], components[K.QUEUE_DF_DISPLAY]],
+        inputs=[components[K.APP_STATE], components[K.INPUT_IMAGE_DISPLAY], components[K.QUEUE_DF]],
         outputs=button_state_outputs
     ))
 
     shutdown_inputs = [components[K.INPUT_IMAGE_DISPLAY]] + workspace_ui_outputs
-    components[K.SHUTDOWN_BUTTON].click(fn=event_handlers.safe_shutdown_action, inputs=[components[K.APP_STATE]] + shutdown_inputs, outputs=None)
+    # components[K.SHUTDOWN_BUTTON].click(fn=event_handlers.safe_shutdown_action, inputs=[components[K.APP_STATE]] + shutdown_inputs, outputs=None, visible=False)
