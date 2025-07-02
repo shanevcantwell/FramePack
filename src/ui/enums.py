@@ -17,7 +17,7 @@ class ComponentKey(StrEnum):
     METADATA_MODAL_TRIGGER_STATE = auto()
 
     # --- Main UI Columns & Controls ---
-    IMAGE_FILE_INPUT = auto() # Is this the invisible overlay that "catches" drag and drop events?
+    IMAGE_FILE_INPUT = auto()
     INPUT_IMAGE_DISPLAY = auto()
     ADD_TASK_BUTTON = auto()
     CLEAR_IMAGE_BUTTON = auto()
@@ -46,22 +46,22 @@ class ComponentKey(StrEnum):
 
     # --- Live Preview & Output ---
     CURRENT_TASK_PREVIEW_IMAGE = auto()
-    CURRENT_TASK_PROGRESS_DESCRIPTION = auto() # _DISPLAY? This is the "segment x of y, Extending video" etc text right? Should the name reflect that it's a live changing element somehow?
+    CURRENT_TASK_PROGRESS_DESCRIPTION = auto()
     CURRENT_TASK_PROGRESS_BAR = auto()
     LAST_FINISHED_VIDEO = auto()
 
     # --- Accordions & Advanced Settings ---
     TOTAL_SEGMENTS_DISPLAY = auto()
     PREVIEW_FREQUENCY_SLIDER = auto()
-    PREVIEW_SPECIFIED_SEGMENTS_TEXTBOX = auto() # _EDITBOX maybe? Does gradio use that term?
+    PREVIEW_SPECIFIED_SEGMENTS_TEXTBOX = auto()
     FPS_SLIDER = auto()
 
     # Renamed from Hunyuan abbreviations (GS, CFG, RS) for clarity.
-    DISTILLED_CFG_START_SLIDER = auto() # Maybe show the Hunyuan version as trailing comments like this one?
-    VARIABLE_CFG_SHAPE_RADIO = auto()
-    DISTILLED_CFG_END_SLIDER = auto()
-    REAL_CFG_SLIDER = auto()
-    GUIDANCE_RESCALE_SLIDER = auto()
+    DISTILLED_CFG_START_SLIDER = auto()         # GS
+    VARIABLE_CFG_SHAPE_RADIO = auto()           # GS_SCHEDULE_SHAPE
+    DISTILLED_CFG_END_SLIDER = auto()           # GS_FINAL
+    REAL_CFG_SLIDER = auto()                    # CFG
+    GUIDANCE_RESCALE_SLIDER = auto()            # RS
 
     ROLL_OFF_START_SLIDER = auto()
     ROLL_OFF_FACTOR_SLIDER = auto()
@@ -85,3 +85,4 @@ class ComponentKey(StrEnum):
     LATENT_WINDOW_SIZE_SLIDER = auto()
     OUTPUT_FOLDER_TEXTBOX = auto()
     SAVE_AS_DEFAULT_BUTTON = auto()
+    RELAUNCH_NOTIFICATION_MD = auto()
