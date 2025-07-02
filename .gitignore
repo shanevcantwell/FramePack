@@ -4,7 +4,9 @@ repo/
 *Zone.Identifier
 loras/
 .scripts/
-install.sh #
+
+# github across various platforms just switches the executable bit back and forth
+install.sh
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
@@ -183,8 +185,6 @@ cython_debug/
 
 saves/
 tmp/
-outputs_svc/
-demo_gradio_svc.py
 .venv_goan/
 .vs/
 *.json
@@ -193,10 +193,6 @@ hf_download
 *Copy*.py
 run_goan.bat
 run_goan.sh
-src/core/generation_core.bak.py
-dossier*.txt
-5002_run.sh
 goan.code-workspace
 goan.log.*
 *.bak.py
-src/ui/bak/
