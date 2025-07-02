@@ -1,4 +1,4 @@
-﻿import torch
+﻿﻿import torch
 import traceback
 import einops
 import numpy as np
@@ -33,19 +33,17 @@ def worker(
     output_queue_ref,
     # --- Creative Parameters (The "Recipe") ---
     prompt,
-    n_prompt,
+    negative_prompt,
     seed,
-    total_second_length,
+    video_length,
     steps,
-    cfg,
-    gs,
-    gs_final,
-    # --- MODIFIED: Parameters for the new CFG scheduler ---
-    gs_schedule_shape,
+    real_cfg,
+    distilled_cfg_start,
+    distilled_cfg_end,
+    variable_cfg_shape,
     roll_off_start,
     roll_off_factor,
-    # --- End of modified parameters ---
-    rs,
+    guidance_rescale,
     preview_frequency,
     segments_to_decode_csv,
     # --- Environment & Debug Parameters ---
@@ -55,6 +53,7 @@ def worker(
     use_teacache,
     use_fp32_transformer_output,
     mp4_crf,
+    force_standard_fps,
     # --- Model & System Objects (Passed from main app) ---
     text_encoder,
     text_encoder_2,
@@ -70,7 +69,7 @@ def worker(
 
     # --- Job Initialization ---
     total_latent_sections, job_id = generation_utils.initialize_job(
-        total_second_length=total_second_length,
+        video_length=video_length,
         fps=fps,
         latent_window_size=latent_window_size,
         task_id=task_id,
@@ -86,9 +85,9 @@ def worker(
     final_output_filename = None
     success = False
 
-    initial_gs_from_ui = gs
-    gs_final_value_for_schedule = (
-        gs_final if gs_final is not None else initial_gs_from_ui
+    initial_gs_from_ui = distilled_cfg_start
+    distilled_cfg_end_value_for_schedule = (
+        distilled_cfg_end if distilled_cfg_end is not None else initial_gs_from_ui
     )
 
     graceful_abort_preview_path = None
@@ -97,7 +96,7 @@ def worker(
     original_fp32_setting = transformer.high_quality_fp32_output_for_inference # Store original setting
 
     # For legacy GPUs, we MUST use FP32 output, regardless of the UI setting.
-    is_legacy_gpu = shared_state_module.shared_state_instance.system_info.get('is_legacy_gpu', False)
+    is_legacy_gpu = shared_state_module.shared_state_instance.system_info.get(shared_state_module.IS_LEGACY_GPU_KEY, False)
     final_use_fp32 = True if is_legacy_gpu else use_fp32_transformer_output
     if is_legacy_gpu and not use_fp32_transformer_output:
         logger.info("Legacy GPU detected: Forcing FP32 transformer output for stability, overriding UI setting.")
@@ -123,17 +122,17 @@ def worker(
         metadata_obj = PngInfo()
         params_to_save_in_metadata = {
             "prompt": prompt,
-            "n_prompt": n_prompt,
+            "negative_prompt": negative_prompt,
             "seed": seed,
-            "total_second_length": total_second_length,
+            "video_length": video_length,
             "steps": steps,
-            "cfg": cfg,
-            "gs": gs,
-            "gs_final": gs_final,
-            "rs": rs,
+            "real_cfg": real_cfg,
+            "distilled_cfg_start": distilled_cfg_start,
+            "distilled_cfg_end": distilled_cfg_end,
+            "guidance_rescale": guidance_rescale,
             "preview_frequency": preview_frequency,
             "segments_to_decode_csv": segments_to_decode_csv,
-            "gs_schedule_shape": gs_schedule_shape,
+            "variable_cfg_shape": variable_cfg_shape,
             "roll_off_start": roll_off_start,
             "roll_off_factor": roll_off_factor,
             "fps": fps,
@@ -169,13 +168,13 @@ def worker(
         llama_vec, clip_l_pooler = encode_prompt_conds(
             prompt, text_encoder, text_encoder_2, tokenizer, tokenizer_2
         )
-        if cfg == 1:
+        if real_cfg == 1:
             llama_vec_n, clip_l_pooler_n = torch.zeros_like(
                 llama_vec
             ), torch.zeros_like(clip_l_pooler)
         else:
             llama_vec_n, clip_l_pooler_n = encode_prompt_conds(
-                n_prompt, text_encoder, text_encoder_2, tokenizer, tokenizer_2
+                negative_prompt, text_encoder, text_encoder_2, tokenizer, tokenizer_2
             )
         llama_vec, llama_attention_mask = crop_or_pad_yield_mask(llama_vec, length=512)
         llama_vec_n, llama_attention_mask_n = crop_or_pad_yield_mask(
@@ -474,6 +473,7 @@ def worker(
                 parsed_segments_to_decode_set=parsed_segments_to_decode_set,
                 fps=fps,
                 mp4_crf=mp4_crf,
+                playback_compatibility_mode=playback_compatibility_mode,
             )
             if saved_file_path:
                 final_output_filename = saved_file_path
