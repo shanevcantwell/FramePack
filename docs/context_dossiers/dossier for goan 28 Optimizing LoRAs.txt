@@ -1,0 +1,94 @@
+Hi! You are continuing a python coding project that has burned through dozens of context windows so far, and will surely use up this one. 
+
+Here find a dossier containing the current, complete state of all relevant files for this context window's subject. Please use this information as the single source of truth for our work today. Also find notes from the previous context about the state we left things in, which mostly functional except some weirdness around the LoRA UI.
+
+Our collaboration is most effective when we follow our established principles. As my AI partner, please adhere to the following workflow:
+
+{Rules:
+* Ground Yourself in the information provided by me: Base all analysis and code generation strictly on the provided files and any error logs I share. Maintain things like variable and function names that already exist in the code
+
+* Plan Before Coding: Before generating any code, first outline a concise, step-by-step plan for your proposed solution. I will approve or amend the plan before you proceed.
+
+* Provide Granular Changes to Files: All code you generate should be self-contained and complete for the specific file it modifies. I will handle integrating it into the project.
+
+* Obsequiousness/sycophancy: Apologies drive me nuts. Do not apologize to me. Just find a silver lining and move forward! 😜
+}
+
+I will provide the strategic direction and encourage appropriate times to move away from purely relying on inference to "first principles" logical, structured tactics, but appreciate your advice about best practices such as PEP8.
+
+--- In our last episode...
+Of course. Here is a summary of our current progress and the next objectives.
+
+### Project Context & Status
+
+**Project:** We are developing `goan`, a Gradio UI for a `HunyuanVideoTransformer3DModelPacked` video generation model. The total asset size, including models held in system RAM and VRAM, is approximately 70 GB.
+
+**Primary Accomplishment:** We have successfully implemented a LoRA (Low-Rank Adaptation) loading system that can handle incompatible, off-the-shelf LoRAs.
+* **Method:** We use a dynamic runtime patching approach located in `ui/lora.py`.
+* **Mechanism:** The `LoRAManager` class translates the incompatible layer names from a source LoRA file (e.g., `transformer.double_blocks.0.img_attn_proj`) into a format that matches our model's architecture (`transformer_blocks.0.attn_to_out_0`). It correctly handles splitting fused QKV layers and standardizes the key format.
+* **Result:** The system now successfully patches approximately 240 layers of the main transformer model without errors.
+
+**Current Problem: Performance Regression**
+* **Symptom:** While functionally correct, the dynamic LoRA patching has introduced a severe performance drop, with iteration times increasing from ~5-8s/it to ~30-40s/it.
+* **Root Cause:** We have diagnosed this as being caused by **breaking fused kernels**. Our custom `LoRALinearLayer` replaces a single, highly-optimized `nn.Linear` GPU operation with a sequence of multiple, less-efficient operations (an original pass, two LoRA matrix multiplications, scaling, and addition). This inefficiency, multiplied across hundreds of layers and sampling steps, is the source of the slowdown.
+* **System Analysis:** The performance pattern on the hardware shows a "bursty" workload, where the GPU waits for the CPU to complete its work between steps, confirming a computational and Python-overhead bottleneck rather than a resource limit.
+
+### Next Objective: Performance Optimization
+
+The project's focus now shifts from functional correctness to performance engineering. We have identified two main paths forward:
+
+1.  **Static LoRA Merging (The Fast Path):** Implement a utility to "bake" the LoRA weights directly into the model's state dictionary before inference. This would restore native performance by using the original `nn.Linear` layers but would sacrifice the flexibility of changing LoRA weights on the fly.
+2.  **Optimizing the `LoRALinearLayer` (The High-Performance Path):** Improve the efficiency of the dynamic layer itself. The most promising avenue here is to integrate **FP8 quantization**, using the logic from the `fp8_optimization_utils.py` file you've previously found to reduce memory bandwidth and accelerate the matrix multiplications.
+
+
+ui/lora.py (The current LoRA loading and patching manager)
+
+diffusers_helper/models/hunyuan_video_packed.py (The core model architecture we need to target)
+
+core/generation_core.py (The main worker that orchestrates generation)
+
+ui/queue.py (Shows how the LoRAManager is invoked and parameters are passed)
+
+ui/shared_state.py (Defines the mapping of parameters and UI component lists)
+
+diffusers_helper/pipelines/k_diffusion_hunyuan.py (The sampler that uses the patched model)
+
+diffusers_helper/k_diffusion/wrapper.py (The CFG-handling wrapper for the model)
+
+diffusers_helper/hunyuan.py (Core VAE and prompt encoding functions for this model family)
+
+ui/layout.py (Defines the UI components, relevant for any potential UI changes)
+
+core/generation_utils.py (Helper functions used by the generation core)
+
+--- File tree for reference if you suspect you need another file to find a helper:
+{Complete code file listing:
+(.venv_goan) shane@Shane-PC:~/github/shanevcantwell/goan$ ls -R src
+src:
+__init__.py  core  diffusers_helper  goan.py  ui
+
+src/core:
+__init__.py  args.py  generation_core.py  generation_utils.py  model_loader.py
+
+src/diffusers_helper:
+bucket_tools.py  gradio       k_diffusion  pipelines
+clip_vision.py   hf_login.py  memory.py    thread_utils.py
+dit_common.py    hunyuan.py   models       utils.py
+
+src/diffusers_helper/gradio:
+progress_bar.py
+
+src/diffusers_helper/k_diffusion:
+uni_pc_fm.py  wrapper.py
+
+src/diffusers_helper/models:
+hunyuan_video_packed.py
+
+src/diffusers_helper/pipelines:
+k_diffusion_hunyuan.py
+
+src/ui:
+__init__.py        layout.py          metadata.py       shared_state.py
+enums.py           legacy_support.py  queue.py          switchboard.py
+event_handlers.py  lora.py            queue_helpers.py  workspace.py }
+

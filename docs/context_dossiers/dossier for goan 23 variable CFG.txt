@@ -1,0 +1,82 @@
+Hi! You are continuing a python coding project that has burned through dozens of context windows so far, and will surely use up this one. 
+
+Here find a dossier containing the current, complete state of all relevant files for this context window's subject. Please use this information as the single source of truth for our work today. Also find notes from the previous context about the state we left things in, which mostly functional except some weirdness around the LoRA UI.
+
+Our collaboration is most effective when we follow our established principles. As my AI partner, please adhere to the following workflow:
+
+{Rules:
+* Ground Yourself in the information provided by me: Base all analysis and code generation strictly on the provided files and any error logs I share. Maintain things like variable and function names that already exist in the code
+
+* Plan Before Coding: Before generating any code, first outline a concise, step-by-step plan for your proposed solution. I will approve or amend the plan before you proceed.
+
+* Provide Granular Changes to Files: All code you generate should be self-contained and complete for the specific file it modifies. I will handle integrating it into the project.
+
+* Obsequiousness/sycophancy: Apologies drive me nuts. Do not apologize to me. Just find a silver lining and move forward! 😜
+}
+
+I will provide the strategic direction and encourage appropriate times to move away from purely relying on inference to "first principles" logical, structured tactics, but appreciate your advice about best practices such as PEP8.
+
+--- In our last episode...
+Project: We are developing goan, a Gradio UI for a FramePack-style video generation model (HunyuanVideoTransformer3DModelPacked).
+
+Current Status & Immediate Goals:
+We have just finished a planning phase to address several key issues. I have captured the list of required code changes, and you are ready to begin implementation and testing. Our two primary development fronts are:
+
+Fixing LoRA Application: The main active task is to debug why a stylistic LoRA is having no visible effect. We have replaced the LoRA application logic with a more robust "Dynamic Layer Replacement" strategy, but further testing is needed. A key hypothesis is that a low real_guidance_scale in the sampler might be nullifying the effect.
+Implementing Variable CFG: We've determined the UI for a variable "Distilled CFG" was not connected to any backend logic. We have designed a new, intuitive "roll-off" scheduler to solve this and to combat the "contrast burn" artifact in long video generations. The immediate next step is to fully implement the UI controls and backend logic for this feature.
+A list of smaller UI/UX bugs and feature enhancements (e.g., fixing the image download button, reorganizing save/load controls, implementing a preset system) has also been defined and is ready for implementation.
+
+In short: We are moving from planning to implementation, focusing first on getting LoRA and the new CFG scheduler fully functional.
+
+--- File tree for reference if you suspect you need another file to find a helper:
+(.venv_goan) shane@Shane-PC:~/github/shanevcantwell/goan$ ls -R
+.:
+LICENSE      diffusers_helper    hf_download       run.sh
+README.md    docs                loras             tests
+__init__.py  goan.py             outputs_svc       tmp
+core         goan_settings.json  requirements.txt  ui
+
+./core:
+__init__.py  args.py  generation_core.py  generation_utils.py  model_loader.py
+
+./diffusers_helper:
+bucket_tools.py  gradio       k_diffusion  pipelines
+clip_vision.py   hf_login.py  memory.py    thread_utils.py
+dit_common.py    hunyuan.py   models       utils.py
+
+./diffusers_helper/gradio:
+progress_bar.py
+
+./diffusers_helper/k_diffusion:
+uni_pc_fm.py  wrapper.py
+
+./diffusers_helper/models:
+hunyuan_video_packed.py
+
+./diffusers_helper/pipelines:
+k_diffusion_hunyuan.py
+
+./tests:
+core
+
+./tests/core:
+test_args.py
+
+./ui:
+__init__.py        layout.py    queue.py          switchboard.py
+enums.py           lora.py      queue_helpers.py  workspace.py
+event_handlers.py  metadata.py  shared_state.py
+
+--- Suggested Files for Context (Prioritized Top 10)
+To start the new context window, I recommend providing these 10 files. They cover the entire chain of logic for the LoRA and CFG scheduling features.
+
+ui/lora.py: (Highest Priority) Contains the new, core "Dynamic Layer Replacement" logic for applying LoRAs. This is central to the main debugging task.
+core/generation_core.py: The main backend worker loop where segment generation is managed and where the new CFG scheduling function is called.
+diffusers_helper/models/hunyuan_video_packed.py: The definition of the transformer model itself. Its layers are the targets for LoRA patching.
+diffusers_helper/pipelines/k_diffusion_hunyuan.py: Contains the sample_hunyuan function, which sets up the sampler and passes the guidance scale values. It's critical for debugging the CFG and LoRA strength.
+diffusers_helper/k_diffusion/wrapper.py: Contains the fm_wrapper that applies the CFG scale math, directly impacting how much influence the LoRA has on the output.
+core/generation_utils.py: The location for the new generate_roll_off_schedule helper function.
+ui/layout.py: Defines all UI components, including the new sliders for the roll-off schedule and the reorganized save/load buttons.
+ui/switchboard.py: Wires all UI components to their backend logic, showing how parameters flow from the UI.
+ui/shared_state.py: Defines the critical lists (CREATIVE_UI_KEYS, etc.) and maps (UI_TO_WORKER_PARAM_MAP) that govern how parameters are saved and passed to the worker.
+ui/queue.py: Contains the top-level process_task_queue_main_loop that initiates a generation task, gathers all parameters from the UI, and calls the worker.
