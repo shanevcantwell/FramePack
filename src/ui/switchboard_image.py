@@ -44,7 +44,7 @@ def wire_events(components: dict):
         components[K.METADATA_PROMPT_PREVIEW_UI],
         components[K.EXTRACTED_METADATA_STATE],
         components[K.MODAL_TRIGGER_BOX],
-        components[K.RESUME_LATENT_PATH_STATE]
+    #     components[K.RESUME_LATENT_PATH_STATE]
     ] + creative_ui_components
 
     (components[K.IMAGE_FILE_INPUT_UI].upload(
