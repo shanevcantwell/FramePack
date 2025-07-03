@@ -13,7 +13,7 @@ def convert_legacy_params(params: dict):
     # --- 1. Handle simple key renames ---
     # This map defines old keys and the new keys they should be renamed to.
     key_rename_map = {
-        'negative_prompt': 'n_prompt',
+        # 'negative_prompt': 'n_prompt',
         # Add other simple renames here in the future, e.g., 'old_name': 'new_name'
     }
 
@@ -49,6 +49,15 @@ def convert_legacy_worker_params(params: dict):
     Args:
         params (dict): A dictionary of parameters with worker keys (e.g., 'gs_schedule_shape').
     """
+    # 1. Handle simple key renames for worker parameters.
+    key_rename_map = {
+        'negative_prompt': 'n_prompt',
+    }
+    for old_key, new_key in key_rename_map.items():
+        if old_key in params:
+            params[new_key] = params.pop(old_key)
+            logger.info(f"Mapped legacy worker parameter '{old_key}' to '{new_key}'.")
+
     worker_key = 'gs_schedule_shape'
     if worker_key in params and isinstance(params[worker_key], bool):
         legacy_bool_val = params[worker_key]

@@ -162,13 +162,13 @@ def create_ui():
 
                 with gr.Accordion("Debug Settings", open=False):
                     components[K.USE_TEACACHE_CHECKBOX] = gr.Checkbox(label='Use TeaCache', value=True)
-                    components[K.FORCE_STANDARD_FPS_CHECKBOX] = gr.Checkbox(label="Force Standard FPS (e.g. 29.97)", value=False)
                     # Hide the FP32 checkbox on legacy GPUs, as it's forced on in the backend.
                     is_legacy_gpu = shared_state_module.shared_state_instance.system_info.get('is_legacy_gpu', False)
                     components[K.USE_FP32_TRANSFORMER_OUTPUT_CHECKBOX] = gr.Checkbox(
                         label="Use FP32 Transformer Output", value=False, visible=not is_legacy_gpu)
                     components[K.GPU_MEMORY_PRESERVATION_SLIDER] = gr.Slider(label="GPU Preserved (GB)", minimum=4, maximum=128, value=6.0, step=0.1)
                     components[K.FPS_SLIDER] = gr.Slider(label="MP4 Framerate (FPS)", minimum=1, maximum=60, value=30, step=1)
+                    components[K.FORCE_STANDARD_FPS_CHECKBOX] = gr.Checkbox(label="Force Standard FPS (e.g. 29.97)", value=False)
                     components[K.MP4_CRF_SLIDER] = gr.Slider(label="MP4 CRF", minimum=0, maximum=51, value=18, step=1)
                     components[K.LATENT_WINDOW_SIZE_SLIDER] = gr.Slider(label="Latent Window Size", minimum=1, maximum=33, value=9, step=1, visible=False)
                     components[K.OUTPUT_FOLDER_TEXTBOX] = gr.Textbox(label="Output Folder", value=workspace_manager.outputs_folder)

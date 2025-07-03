@@ -22,12 +22,16 @@ def update_scheduler_visibility(choice: str) -> dict:
     is_rolloff = (choice == "Roll-off")
     # The End CFG slider is visible for both Linear and Roll-off
     show_final_gs = is_rolloff or (choice == "Linear")
-
-    return {
-        K.DISTILLED_CFG_END_SLIDER: gr.update(visible=show_final_gs, interactive=show_final_gs),
-        K.ROLL_OFF_START_SLIDER: gr.update(visible=is_rolloff),
-        K.ROLL_OFF_FACTOR_SLIDER: gr.update(visible=is_rolloff),
-    }
+    
+    # Return a tuple of updates in the order the UI expects:
+    # 1. DISTILLED_CFG_END_SLIDER
+    # 2. ROLL_OFF_START_SLIDER
+    # 3. ROLL_OFF_FACTOR_SLIDER
+    return (
+        gr.update(visible=show_final_gs, interactive=show_final_gs),
+        gr.update(visible=is_rolloff),
+        gr.update(visible=is_rolloff)
+    )
 
 def safe_shutdown_action(app_state, *ui_values):
     """Performs all necessary save operations to prepare the app for a clean shutdown."""

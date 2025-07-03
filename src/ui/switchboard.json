@@ -217,7 +217,7 @@
           "handler": null,
           "inputs": null,
           "outputs": null,
-          "js": "() => { document.getElementById('image_downloader_hidden_file').querySelector('a[download]').click(); }"
+          "js": "() => { setTimeout(() => { document.getElementById('image_downloader_hidden_file').querySelector('a[download]').click(); }, 50); }"
         }
       ]
     },
