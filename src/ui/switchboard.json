@@ -1,0 +1,870 @@
+{
+  "collections": {
+    "button_state_outputs": [
+      "K.ADD_TASK_BUTTON",
+      "K.PROCESS_QUEUE_BUTTON",
+      "K.CREATE_PREVIEW_BUTTON",
+      "K.CLEAR_IMAGE_BUTTON",
+      "K.DOWNLOAD_IMAGE_BUTTON",
+      "K.SAVE_QUEUE_BUTTON",
+      "K.CLEAR_QUEUE_BUTTON"
+    ],
+    "creative_ui_inputs": [
+      "K.POSITIVE_PROMPT",
+      "K.NEGATIVE_PROMPT",
+      "K.VIDEO_LENGTH_SLIDER",
+      "K.SEED",
+      "K.PREVIEW_FREQUENCY_SLIDER",
+      "K.PREVIEW_SPECIFIED_SEGMENTS_TEXTBOX",
+      "K.FPS_SLIDER",
+      "K.DISTILLED_CFG_START_SLIDER",
+      "K.VARIABLE_CFG_SHAPE_RADIO",
+      "K.DISTILLED_CFG_END_SLIDER",
+      "K.REAL_CFG_SLIDER",
+      "K.GUIDANCE_RESCALE_SLIDER",
+      "K.ROLL_OFF_START_SLIDER",
+      "K.ROLL_OFF_FACTOR_SLIDER",
+      "K.STEPS_SLIDER"
+    ],
+    "full_workspace_inputs": [
+        "K.POSITIVE_PROMPT",
+        "K.NEGATIVE_PROMPT",
+        "K.VIDEO_LENGTH_SLIDER",
+        "K.SEED",
+        "K.PREVIEW_FREQUENCY_SLIDER",
+        "K.PREVIEW_SPECIFIED_SEGMENTS_TEXTBOX",
+        "K.FPS_SLIDER",
+        "K.DISTILLED_CFG_START_SLIDER",
+        "K.VARIABLE_CFG_SHAPE_RADIO",
+        "K.DISTILLED_CFG_END_SLIDER",
+        "K.REAL_CFG_SLIDER",
+        "K.GUIDANCE_RESCALE_SLIDER",
+        "K.ROLL_OFF_START_SLIDER",
+        "K.ROLL_OFF_FACTOR_SLIDER",
+        "K.STEPS_SLIDER",
+        "K.USE_TEACACHE_CHECKBOX",
+        "K.USE_FP32_TRANSFORMER_OUTPUT_CHECKBOX",
+        "K.FORCE_STANDARD_FPS_CHECKBOX",
+        "K.GPU_MEMORY_PRESERVATION_SLIDER",
+        "K.MP4_CRF_SLIDER",
+        "K.LATENT_WINDOW_SIZE_SLIDER",
+        "K.OUTPUT_FOLDER_TEXTBOX"
+    ]
+  },
+  "switchboard_workspace": [
+    {
+      "component": "K.SAVE_AS_DEFAULT_BUTTON",
+      "event": "click",
+      "chained_calls": [
+        {
+          "handler": "workspace_manager.save_as_default_workspace",
+          "inputs": [
+            "coll:full_workspace_inputs" 
+          ],
+          "outputs": [
+            "K.RELAUNCH_NOTIFICATION_MD"
+          ]
+        }
+      ]
+    }
+  ],
+  "switchboard_lora": [
+    {
+      "component": "K.LORA_UPLOAD_BUTTON",
+      "event": "upload",
+      "chained_calls": [
+        {
+          "handler": "lora_manager.handle_lora_upload_and_update_ui",
+          "inputs": [
+            "K.APP_STATE",
+            "K.LORA_UPLOAD_BUTTON"
+          ],
+          "outputs": [
+            "K.APP_STATE",
+            "K.LORA_NAME_STATE",
+            "K.LORA_ROW",
+            "K.LORA_NAME",
+            "K.LORA_WEIGHT",
+            "K.LORA_TARGETS"
+          ]
+        }
+      ]
+    }
+  ],
+  "switchboard_image": [
+    {
+      "component": "K.IMAGE_FILE_INPUT",
+      "event": "upload",
+      "chained_calls": [
+        {
+          "handler": "workspace_manager.handle_file_drop",
+          "inputs": [
+            "K.IMAGE_FILE_INPUT"
+          ],
+          "outputs": [
+            "K.IMAGE_FILE_INPUT",
+            "K.INPUT_IMAGE_DISPLAY",
+            "K.CLEAR_IMAGE_BUTTON",
+            "K.DOWNLOAD_IMAGE_BUTTON",
+            "K.ADD_TASK_BUTTON",
+            "K.METADATA_PROMPT_PREVIEW",
+            "K.EXTRACTED_METADATA_STATE",
+            "K.METADATA_MODAL_TRIGGER_STATE",
+            "K.POSITIVE_PROMPT",
+            "K.NEGATIVE_PROMPT",
+            "K.VIDEO_LENGTH_SLIDER",
+            "K.SEED",
+            "K.STEPS_SLIDER",
+            "K.GUIDANCE_RESCALE_SLIDER",
+            "K.PREVIEW_FREQUENCY_SLIDER",
+            "K.PREVIEW_SPECIFIED_SEGMENTS_TEXTBOX",
+            "K.FPS_SLIDER",
+            "K.DISTILLED_CFG_START_SLIDER",
+            "K.VARIABLE_CFG_SHAPE_RADIO",
+            "K.DISTILLED_CFG_END_SLIDER",
+            "K.REAL_CFG_SLIDER",
+            "K.ROLL_OFF_START_SLIDER",
+            "K.ROLL_OFF_FACTOR_SLIDER"
+          ]
+        },
+        {
+          "handler": "event_handlers.update_button_states",
+          "inputs": [
+            "K.APP_STATE",
+            "K.INPUT_IMAGE_DISPLAY",
+            "K.IMAGE_FILE_INPUT"
+          ],
+          "outputs": [
+            "K.ADD_TASK_BUTTON",
+            "K.PROCESS_QUEUE_BUTTON",
+            "K.CREATE_PREVIEW_BUTTON",
+            "K.CLEAR_IMAGE_BUTTON",
+            "K.DOWNLOAD_IMAGE_BUTTON",
+            "K.SAVE_QUEUE_BUTTON",
+            "K.CLEAR_QUEUE_BUTTON"
+          ]
+        }
+      ]
+    },
+    {
+      "component": "K.CLEAR_IMAGE_BUTTON",
+      "event": "click",
+      "chained_calls": [
+        {
+          "handler": "event_handlers.clear_image_action",
+          "inputs": null,
+          "outputs": [
+            "K.IMAGE_FILE_INPUT",
+            "K.INPUT_IMAGE_DISPLAY",
+            "K.CLEAR_IMAGE_BUTTON",
+            "K.DOWNLOAD_IMAGE_BUTTON",
+            "K.ADD_TASK_BUTTON",
+            "K.EXTRACTED_METADATA_STATE"
+          ]
+        },
+        {
+          "handler": "event_handlers.update_button_states",
+          "inputs": [
+            "K.APP_STATE",
+            "K.INPUT_IMAGE_DISPLAY",
+            "K.IMAGE_FILE_INPUT"
+          ],
+          "outputs": [
+            "K.ADD_TASK_BUTTON",
+            "K.PROCESS_QUEUE_BUTTON",
+            "K.CREATE_PREVIEW_BUTTON",
+            "K.CLEAR_IMAGE_BUTTON",
+            "K.DOWNLOAD_IMAGE_BUTTON",
+            "K.SAVE_QUEUE_BUTTON",
+            "K.CLEAR_QUEUE_BUTTON"
+          ]
+        }
+      ]
+    },
+    {
+      "component": "K.DOWNLOAD_IMAGE_BUTTON",
+      "event": "click",
+      "chained_calls": [
+        {
+          "handler": "event_handlers.prepare_image_for_download",
+          "inputs": [
+            "K.INPUT_IMAGE_DISPLAY",
+            "K.APP_STATE",
+            "gr.State(shared_state_module.CREATIVE_UI_KEYS)",
+            "K.POSITIVE_PROMPT",
+            "K.NEGATIVE_PROMPT",
+            "K.VIDEO_LENGTH_SLIDER",
+            "K.SEED",
+            "K.STEPS_SLIDER",
+            "K.GUIDANCE_RESCALE_SLIDER",
+            "K.PREVIEW_FREQUENCY_SLIDER",
+            "K.PREVIEW_SPECIFIED_SEGMENTS_TEXTBOX",
+            "K.FPS_SLIDER",
+            "K.DISTILLED_CFG_START_SLIDER",
+            "K.VARIABLE_CFG_SHAPE_RADIO",
+            "K.DISTILLED_CFG_END_SLIDER",
+            "K.REAL_CFG_SLIDER",
+            "K.ROLL_OFF_START_SLIDER",
+            "K.ROLL_OFF_FACTOR_SLIDER"
+          ],
+          "outputs": [
+            "K.IMAGE_DOWNLOADER"
+          ],
+          "show_progress": "full",
+          "api_name": "download_image_with_metadata"
+        },
+        {
+          "handler": null,
+          "inputs": null,
+          "outputs": null,
+          "js": "() => { document.getElementById('image_downloader_hidden_file').querySelector('a[download]').click(); }"
+        }
+      ]
+    },
+    {
+      "component": "K.METADATA_MODAL_TRIGGER_STATE",
+      "event": "change",
+      "chained_calls": [
+        {
+          "handler": "lambda x: gr.update(visible=True) if x else gr.update(visible=False)",
+          "inputs": [
+            "K.METADATA_MODAL_TRIGGER_STATE"
+          ],
+          "outputs": [
+            "K.METADATA_MODAL"
+          ],
+          "api_name": false,
+          "queue": false
+        }
+      ]
+    },
+    {
+      "component": "K.CONFIRM_METADATA_BUTTON",
+      "event": "click",
+      "chained_calls": [
+        {
+          "handler": "metadata_manager.ui_load_params_from_image_metadata",
+          "inputs": [
+            "K.EXTRACTED_METADATA_STATE"
+          ],
+          "outputs": [
+            "K.POSITIVE_PROMPT",
+            "K.NEGATIVE_PROMPT",
+            "K.VIDEO_LENGTH_SLIDER",
+            "K.SEED",
+            "K.STEPS_SLIDER",
+            "K.GUIDANCE_RESCALE_SLIDER",
+            "K.PREVIEW_FREQUENCY_SLIDER",
+            "K.PREVIEW_SPECIFIED_SEGMENTS_TEXTBOX",
+            "K.FPS_SLIDER",
+            "K.DISTILLED_CFG_START_SLIDER",
+            "K.VARIABLE_CFG_SHAPE_RADIO",
+            "K.DISTILLED_CFG_END_SLIDER",
+            "K.REAL_CFG_SLIDER",
+            "K.ROLL_OFF_START_SLIDER",
+            "K.ROLL_OFF_FACTOR_SLIDER"
+          ]
+        },
+        {
+          "handler": "event_handlers.ui_update_total_segments",
+          "inputs": [
+            "K.VIDEO_LENGTH_SLIDER",
+            "K.LATENT_WINDOW_SIZE_SLIDER",
+            "K.FPS_SLIDER"
+          ],
+          "outputs": [
+            "K.TOTAL_SEGMENTS_DISPLAY"
+          ]
+        },
+        {
+          "handler": "lambda: gr.update(value=None)",
+          "inputs": null,
+          "outputs": [
+            "K.METADATA_MODAL_TRIGGER_STATE"
+          ]
+        }
+      ]
+    },
+    {
+      "component": "K.CANCEL_METADATA_BUTTON",
+      "event": "click",
+      "chained_calls": [
+        {
+          "handler": "lambda: gr.update(value=None)",
+          "inputs": null,
+          "outputs": [
+            "K.METADATA_MODAL_TRIGGER_STATE"
+          ]
+        }
+      ]
+    }
+  ],
+  "switchboard_queue": [
+    {
+      "component": "K.ADD_TASK_BUTTON",
+      "event": "click",
+      "chained_calls": [
+        {
+          "handler": "queue_actions.add_or_update_task_in_queue",
+          "inputs": [
+            "K.INPUT_IMAGE_DISPLAY",
+            "K.POSITIVE_PROMPT",
+            "K.NEGATIVE_PROMPT",
+            "K.VIDEO_LENGTH_SLIDER",
+            "K.LATENT_WINDOW_SIZE_SLIDER",
+            "K.SEED",
+            "K.STEPS_SLIDER",
+            "K.GUIDANCE_RESCALE_SLIDER",
+            "K.PREVIEW_FREQUENCY_SLIDER",
+            "K.PREVIEW_SPECIFIED_SEGMENTS_TEXTBOX",
+            "K.FPS_SLIDER",
+            "K.DISTILLED_CFG_START_SLIDER",
+            "K.VARIABLE_CFG_SHAPE_RADIO",
+            "K.DISTILLED_CFG_END_SLIDER",
+            "K.REAL_CFG_SLIDER",
+            "K.ROLL_OFF_START_SLIDER",
+            "K.ROLL_OFF_FACTOR_SLIDER",
+            "K.USE_TEACACHE_CHECKBOX",
+            "K.USE_FP32_TRANSFORMER_OUTPUT_CHECKBOX",
+            "K.FORCE_STANDARD_FPS_CHECKBOX",
+            "K.GPU_MEMORY_PRESERVATION_SLIDER",
+            "K.MP4_CRF_SLIDER",
+            "K.OUTPUT_FOLDER_TEXTBOX",
+            "K.LORA_NAME",
+            "K.LORA_WEIGHT",
+            "K.LORA_TARGETS"
+          ],
+          "outputs": [
+            "K.APP_STATE",
+            "K.QUEUE_DF",
+            "K.INPUT_IMAGE_DISPLAY",
+            "K.IMAGE_FILE_INPUT",
+            "K.POSITIVE_PROMPT",
+            "K.NEGATIVE_PROMPT",
+            "K.VIDEO_LENGTH_SLIDER",
+            "K.LATENT_WINDOW_SIZE_SLIDER",
+            "K.SEED",
+            "K.STEPS_SLIDER",
+            "K.GUIDANCE_RESCALE_SLIDER",
+            "K.PREVIEW_FREQUENCY_SLIDER",
+            "K.PREVIEW_SPECIFIED_SEGMENTS_TEXTBOX",
+            "K.FPS_SLIDER",
+            "K.DISTILLED_CFG_START_SLIDER",
+            "K.VARIABLE_CFG_SHAPE_RADIO",
+            "K.DISTILLED_CFG_END_SLIDER",
+            "K.REAL_CFG_SLIDER",
+            "K.ROLL_OFF_START_SLIDER",
+            "K.ROLL_OFF_FACTOR_SLIDER",
+            "K.USE_TEACACHE_CHECKBOX",
+            "K.USE_FP32_TRANSFORMER_OUTPUT_CHECKBOX",
+            "K.FORCE_STANDARD_FPS_CHECKBOX",
+            "K.GPU_MEMORY_PRESERVATION_SLIDER",
+            "K.MP4_CRF_SLIDER",
+            "K.OUTPUT_FOLDER_TEXTBOX",
+            "K.LORA_NAME",
+            "K.LORA_WEIGHT",
+            "K.LORA_TARGETS",
+            "K.CLEAR_IMAGE_BUTTON",
+            "K.DOWNLOAD_IMAGE_BUTTON",
+            "K.ADD_TASK_BUTTON",
+            "K.CANCEL_EDIT_TASK_BUTTON"
+          ]
+        },
+        {
+          "handler": "event_handlers.update_button_states",
+          "inputs": [
+            "K.APP_STATE",
+            "K.INPUT_IMAGE_DISPLAY",
+            "K.QUEUE_DF"
+          ],
+          "outputs": [
+            "K.ADD_TASK_BUTTON",
+            "K.PROCESS_QUEUE_BUTTON",
+            "K.CREATE_PREVIEW_BUTTON",
+            "K.CLEAR_IMAGE_BUTTON",
+            "K.DOWNLOAD_IMAGE_BUTTON",
+            "K.SAVE_QUEUE_BUTTON",
+            "K.CLEAR_QUEUE_BUTTON"
+          ]
+        },
+        {
+          "handler": "event_handlers.ui_update_total_segments",
+          "inputs": [
+            "K.VIDEO_LENGTH_SLIDER",
+            "K.LATENT_WINDOW_SIZE_SLIDER",
+            "K.FPS_SLIDER"
+          ],
+          "outputs": [
+            "K.TOTAL_SEGMENTS_DISPLAY"
+          ]
+        }
+      ]
+    },
+    {
+      "component": "K.PROCESS_QUEUE_BUTTON",
+      "event": "click",
+      "chained_calls": [
+        {
+          "handler": "queue_processing.process_task_queue_and_listen",
+          "inputs": [
+            "K.LORA_NAME",
+            "K.LORA_WEIGHT",
+            "K.LORA_TARGETS"
+          ],
+          "outputs": [
+            "K.APP_STATE",
+            "K.QUEUE_DF",
+            "K.LAST_FINISHED_VIDEO",
+            "K.CURRENT_TASK_PREVIEW_IMAGE",
+            "K.CURRENT_TASK_PROGRESS_DESCRIPTION",
+            "K.CURRENT_TASK_PROGRESS_BAR",
+            "K.PROCESS_QUEUE_BUTTON",
+            "K.CREATE_PREVIEW_BUTTON",
+            "K.CLEAR_QUEUE_BUTTON"
+          ]
+        },
+        {
+          "handler": "event_handlers.update_button_states",
+          "inputs": [
+            "K.APP_STATE",
+            "K.INPUT_IMAGE_DISPLAY",
+            "K.QUEUE_DF"
+          ],
+          "outputs": [
+            "K.ADD_TASK_BUTTON",
+            "K.PROCESS_QUEUE_BUTTON",
+            "K.CREATE_PREVIEW_BUTTON",
+            "K.CLEAR_IMAGE_BUTTON",
+            "K.DOWNLOAD_IMAGE_BUTTON",
+            "K.SAVE_QUEUE_BUTTON",
+            "K.CLEAR_QUEUE_BUTTON"
+          ]
+        }
+      ]
+    },
+    {
+      "component": "K.CREATE_PREVIEW_BUTTON",
+      "event": "click",
+      "chained_calls": [
+        {
+          "handler": "queue_processing.request_preview_generation_action",
+          "inputs": null,
+          "outputs": null
+        },
+        {
+          "handler": "event_handlers.update_button_states",
+          "inputs": [
+            "K.APP_STATE",
+            "K.INPUT_IMAGE_DISPLAY",
+            "K.QUEUE_DF"
+          ],
+          "outputs": [
+            "K.ADD_TASK_BUTTON",
+            "K.PROCESS_QUEUE_BUTTON",
+            "K.CREATE_PREVIEW_BUTTON",
+            "K.CLEAR_IMAGE_BUTTON",
+            "K.DOWNLOAD_IMAGE_BUTTON",
+            "K.SAVE_QUEUE_BUTTON",
+            "K.CLEAR_QUEUE_BUTTON"
+          ]
+        }
+      ]
+    },
+    {
+      "component": "K.CANCEL_EDIT_TASK_BUTTON",
+      "event": "click",
+      "chained_calls": [
+        {
+          "handler": "queue_actions.cancel_edit_mode_action",
+          "inputs": null,
+          "outputs": [
+            "K.APP_STATE",
+            "K.QUEUE_DF",
+            "K.INPUT_IMAGE_DISPLAY",
+            "K.IMAGE_FILE_INPUT",
+            "K.POSITIVE_PROMPT",
+            "K.NEGATIVE_PROMPT",
+            "K.VIDEO_LENGTH_SLIDER",
+            "K.LATENT_WINDOW_SIZE_SLIDER",
+            "K.SEED",
+            "K.STEPS_SLIDER",
+            "K.GUIDANCE_RESCALE_SLIDER",
+            "K.PREVIEW_FREQUENCY_SLIDER",
+            "K.PREVIEW_SPECIFIED_SEGMENTS_TEXTBOX",
+            "K.FPS_SLIDER",
+            "K.DISTILLED_CFG_START_SLIDER",
+            "K.VARIABLE_CFG_SHAPE_RADIO",
+            "K.DISTILLED_CFG_END_SLIDER",
+            "K.REAL_CFG_SLIDER",
+            "K.ROLL_OFF_START_SLIDER",
+            "K.ROLL_OFF_FACTOR_SLIDER",
+            "K.USE_TEACACHE_CHECKBOX",
+            "K.USE_FP32_TRANSFORMER_OUTPUT_CHECKBOX",
+            "K.FORCE_STANDARD_FPS_CHECKBOX",
+            "K.GPU_MEMORY_PRESERVATION_SLIDER",
+            "K.MP4_CRF_SLIDER",
+            "K.OUTPUT_FOLDER_TEXTBOX",
+            "K.LORA_NAME",
+            "K.LORA_WEIGHT",
+            "K.LORA_TARGETS",
+            "K.CLEAR_IMAGE_BUTTON",
+            "K.DOWNLOAD_IMAGE_BUTTON",
+            "K.ADD_TASK_BUTTON",
+            "K.CANCEL_EDIT_TASK_BUTTON"
+          ]
+        },
+        {
+          "handler": "event_handlers.ui_update_total_segments",
+          "inputs": [
+            "K.VIDEO_LENGTH_SLIDER",
+            "K.LATENT_WINDOW_SIZE_SLIDER",
+            "K.FPS_SLIDER"
+          ],
+          "outputs": [
+            "K.TOTAL_SEGMENTS_DISPLAY"
+          ]
+        }
+      ]
+    },
+    {
+      "component": "K.CLEAR_QUEUE_BUTTON",
+      "event": "click",
+      "chained_calls": [
+        {
+          "handler": "queue_actions.clear_task_queue_action",
+          "inputs": null,
+          "outputs": [
+            "K.APP_STATE",
+            "K.QUEUE_DF"
+          ]
+        },
+        {
+          "handler": "event_handlers.update_button_states",
+          "inputs": [
+            "K.APP_STATE",
+            "K.INPUT_IMAGE_DISPLAY",
+            "K.QUEUE_DF"
+          ],
+          "outputs": [
+            "K.ADD_TASK_BUTTON",
+            "K.PROCESS_QUEUE_BUTTON",
+            "K.CREATE_PREVIEW_BUTTON",
+            "K.CLEAR_IMAGE_BUTTON",
+            "K.DOWNLOAD_IMAGE_BUTTON",
+            "K.SAVE_QUEUE_BUTTON",
+            "K.CLEAR_QUEUE_BUTTON"
+          ]
+        }
+      ]
+    },
+    {
+      "component": "K.SAVE_QUEUE_BUTTON",
+      "event": "click",
+      "chained_calls": [
+        {
+          "handler": "queue_actions.save_queue_to_zip",
+          "inputs": null,
+          "outputs": [
+            "K.APP_STATE",
+            "K.QUEUE_DOWNLOADER"
+          ],
+          "show_progress": "full"
+        },
+        {
+          "handler": null,
+          "inputs": null,
+          "outputs": null,
+          "js": "() => { document.getElementById('queue_downloader_hidden_file').querySelector('a[download]').click(); }"
+        }
+      ]
+    },
+    {
+      "component": "K.LOAD_QUEUE_BUTTON",
+      "event": "upload",
+      "chained_calls": [
+        {
+          "handler": "queue_actions.load_queue_from_zip",
+          "inputs": [
+            "K.LOAD_QUEUE_BUTTON"
+          ],
+          "outputs": [
+            "K.APP_STATE",
+            "K.QUEUE_DF"
+          ]
+        },
+        {
+          "handler": "event_handlers.update_button_states",
+          "inputs": [
+            "K.APP_STATE",
+            "K.INPUT_IMAGE_DISPLAY",
+            "K.QUEUE_DF"
+          ],
+          "outputs": [
+            "K.ADD_TASK_BUTTON",
+            "K.PROCESS_QUEUE_BUTTON",
+            "K.CREATE_PREVIEW_BUTTON",
+            "K.CLEAR_IMAGE_BUTTON",
+            "K.DOWNLOAD_IMAGE_BUTTON",
+            "K.SAVE_QUEUE_BUTTON",
+            "K.CLEAR_QUEUE_BUTTON"
+          ]
+        }
+      ]
+    },
+    {
+      "component": "K.QUEUE_DF",
+      "event": "select",
+      "chained_calls": [
+        {
+          "handler": "queue_actions.handle_queue_action_on_select",
+          "inputs": [
+            "K.INPUT_IMAGE_DISPLAY",
+            "K.POSITIVE_PROMPT",
+            "K.NEGATIVE_PROMPT",
+            "K.VIDEO_LENGTH_SLIDER",
+            "K.LATENT_WINDOW_SIZE_SLIDER",
+            "K.SEED",
+            "K.STEPS_SLIDER",
+            "K.GUIDANCE_RESCALE_SLIDER",
+            "K.PREVIEW_FREQUENCY_SLIDER",
+            "K.PREVIEW_SPECIFIED_SEGMENTS_TEXTBOX",
+            "K.FPS_SLIDER",
+            "K.DISTILLED_CFG_START_SLIDER",
+            "K.VARIABLE_CFG_SHAPE_RADIO",
+            "K.DISTILLED_CFG_END_SLIDER",
+            "K.REAL_CFG_SLIDER",
+            "K.ROLL_OFF_START_SLIDER",
+            "K.ROLL_OFF_FACTOR_SLIDER",
+            "K.USE_TEACACHE_CHECKBOX",
+            "K.USE_FP32_TRANSFORMER_OUTPUT_CHECKBOX",
+            "K.FORCE_STANDARD_FPS_CHECKBOX",
+            "K.GPU_MEMORY_PRESERVATION_SLIDER",
+            "K.MP4_CRF_SLIDER",
+            "K.OUTPUT_FOLDER_TEXTBOX",
+            "K.LORA_NAME",
+            "K.LORA_WEIGHT",
+            "K.LORA_TARGETS"
+          ],
+          "outputs": [
+            "K.APP_STATE",
+            "K.QUEUE_DF",
+            "K.INPUT_IMAGE_DISPLAY",
+            "K.IMAGE_FILE_INPUT",
+            "K.POSITIVE_PROMPT",
+            "K.NEGATIVE_PROMPT",
+            "K.VIDEO_LENGTH_SLIDER",
+            "K.LATENT_WINDOW_SIZE_SLIDER",
+            "K.SEED",
+            "K.STEPS_SLIDER",
+            "K.GUIDANCE_RESCALE_SLIDER",
+            "K.PREVIEW_FREQUENCY_SLIDER",
+            "K.PREVIEW_SPECIFIED_SEGMENTS_TEXTBOX",
+            "K.FPS_SLIDER",
+            "K.DISTILLED_CFG_START_SLIDER",
+            "K.VARIABLE_CFG_SHAPE_RADIO",
+            "K.DISTILLED_CFG_END_SLIDER",
+            "K.REAL_CFG_SLIDER",
+            "K.ROLL_OFF_START_SLIDER",
+            "K.ROLL_OFF_FACTOR_SLIDER",
+            "K.USE_TEACACHE_CHECKBOX",
+            "K.USE_FP32_TRANSFORMER_OUTPUT_CHECKBOX",
+            "K.FORCE_STANDARD_FPS_CHECKBOX",
+            "K.GPU_MEMORY_PRESERVATION_SLIDER",
+            "K.MP4_CRF_SLIDER",
+            "K.OUTPUT_FOLDER_TEXTBOX",
+            "K.LORA_NAME",
+            "K.LORA_WEIGHT",
+            "K.LORA_TARGETS",
+            "K.CLEAR_IMAGE_BUTTON",
+            "K.DOWNLOAD_IMAGE_BUTTON",
+            "K.ADD_TASK_BUTTON",
+            "K.CANCEL_EDIT_TASK_BUTTON"
+          ]
+        },
+        {
+          "handler": "event_handlers.update_button_states",
+          "inputs": [
+            "K.APP_STATE",
+            "K.INPUT_IMAGE_DISPLAY",
+            "K.QUEUE_DF"
+          ],
+          "outputs": [
+            "K.ADD_TASK_BUTTON",
+            "K.PROCESS_QUEUE_BUTTON",
+            "K.CREATE_PREVIEW_BUTTON",
+            "K.CLEAR_IMAGE_BUTTON",
+            "K.DOWNLOAD_IMAGE_BUTTON",
+            "K.SAVE_QUEUE_BUTTON",
+            "K.CLEAR_QUEUE_BUTTON"
+          ]
+        },
+        {
+          "handler": "event_handlers.ui_update_total_segments",
+          "inputs": [
+            "K.VIDEO_LENGTH_SLIDER",
+            "K.LATENT_WINDOW_SIZE_SLIDER",
+            "K.FPS_SLIDER"
+          ],
+          "outputs": [
+            "K.TOTAL_SEGMENTS_DISPLAY"
+          ]
+        }
+      ]
+    }
+  ],
+  "switchboard_misc": [
+    {
+      "component": "K.VARIABLE_CFG_SHAPE_RADIO",
+      "event": "change",
+      "chained_calls": [
+        {
+          "handler": "event_handlers.update_scheduler_visibility",
+          "inputs": [
+            "K.VARIABLE_CFG_SHAPE_RADIO"
+          ],
+          "outputs": [
+            "K.DISTILLED_CFG_END_SLIDER",
+            "K.ROLL_OFF_START_SLIDER",
+            "K.ROLL_OFF_FACTOR_SLIDER"
+          ]
+        }
+      ]
+    },
+    {
+      "component": "K.VIDEO_LENGTH_SLIDER",
+      "event": "change",
+      "chained_calls": [
+        {
+          "handler": "event_handlers.ui_update_total_segments",
+          "inputs": [
+            "K.VIDEO_LENGTH_SLIDER",
+            "K.LATENT_WINDOW_SIZE_SLIDER",
+            "K.FPS_SLIDER"
+          ],
+          "outputs": [
+            "K.TOTAL_SEGMENTS_DISPLAY"
+          ]
+        }
+      ]
+    },
+    {
+      "component": "K.LATENT_WINDOW_SIZE_SLIDER",
+      "event": "change",
+      "chained_calls": [
+        {
+          "handler": "event_handlers.ui_update_total_segments",
+          "inputs": [
+            "K.VIDEO_LENGTH_SLIDER",
+            "K.LATENT_WINDOW_SIZE_SLIDER",
+            "K.FPS_SLIDER"
+          ],
+          "outputs": [
+            "K.TOTAL_SEGMENTS_DISPLAY"
+          ]
+        }
+      ]
+    },
+    {
+      "component": "K.FPS_SLIDER",
+      "event": "change",
+      "chained_calls": [
+        {
+          "handler": "event_handlers.ui_update_total_segments",
+          "inputs": [
+            "K.VIDEO_LENGTH_SLIDER",
+            "K.LATENT_WINDOW_SIZE_SLIDER",
+            "K.FPS_SLIDER"
+          ],
+          "outputs": [
+            "K.TOTAL_SEGMENTS_DISPLAY"
+          ]
+        }
+      ]
+    }
+  ],
+"switchboard_startup": [
+    {
+      "component": "K.BLOCK",
+      "event": "load",
+      "chained_calls": [
+        {
+          "handler": "workspace_manager.load_workspace_on_start",
+          "inputs": null,
+          "outputs": [
+            "gr.State()",
+            "gr.State()"
+          ]
+        },
+        {
+          "handler": "workspace_manager.load_settings_from_file",
+          "inputs": [
+            "ref:chained_calls[0].outputs[0]"
+          ],
+          "outputs": [
+            "K.POSITIVE_PROMPT",
+            "K.NEGATIVE_PROMPT",
+            "K.VIDEO_LENGTH_SLIDER",
+            "K.SEED",
+            "K.PREVIEW_FREQUENCY_SLIDER",
+            "K.PREVIEW_SPECIFIED_SEGMENTS_TEXTBOX",
+            "K.FPS_SLIDER",
+            "K.DISTILLED_CFG_START_SLIDER",
+            "K.VARIABLE_CFG_SHAPE_RADIO",
+            "K.DISTILLED_CFG_END_SLIDER",
+            "K.ROLL_OFF_START_SLIDER",
+            "K.ROLL_OFF_FACTOR_SLIDER",
+            "K.STEPS_SLIDER",
+            "K.REAL_CFG_SLIDER",
+            "K.GUIDANCE_RESCALE_SLIDER",
+            "K.USE_TEACACHE_CHECKBOX",
+            "K.USE_FP32_TRANSFORMER_OUTPUT_CHECKBOX",
+            "K.GPU_MEMORY_PRESERVATION_SLIDER",
+            "K.MP4_CRF_SLIDER",
+            "K.OUTPUT_FOLDER_TEXTBOX",
+            "K.LATENT_WINDOW_SIZE_SLIDER"
+          ]
+        },
+        {
+          "handler": "workspace_manager.load_image_from_path",
+          "inputs": [
+            "ref:chained_calls[0].outputs[1]"
+          ],
+          "outputs": [
+            "K.INPUT_IMAGE_DISPLAY",
+            "K.CLEAR_IMAGE_BUTTON",
+            "K.DOWNLOAD_IMAGE_BUTTON",
+            "K.IMAGE_FILE_INPUT"
+          ]
+        },
+        {
+          "handler": "event_handlers.ui_update_total_segments",
+          "inputs": [
+            "K.VIDEO_LENGTH_SLIDER",
+            "K.LATENT_WINDOW_SIZE_SLIDER",
+            "K.FPS_SLIDER"
+          ],
+          "outputs": [
+            "K.TOTAL_SEGMENTS_DISPLAY"
+          ]
+        },
+        {
+          "handler": "event_handlers.update_button_states",
+          "inputs": [
+            "K.APP_STATE",
+            "K.INPUT_IMAGE_DISPLAY",
+            "K.QUEUE_DF"
+          ],
+          "outputs": [
+            "K.ADD_TASK_BUTTON",
+            "K.PROCESS_QUEUE_BUTTON",
+            "K.CREATE_PREVIEW_BUTTON",
+            "K.CLEAR_IMAGE_BUTTON",
+            "K.DOWNLOAD_IMAGE_BUTTON",
+            "K.SAVE_QUEUE_BUTTON",
+            "K.CLEAR_QUEUE_BUTTON"
+          ]
+        }
+      ]
+    }
+  ]
+}

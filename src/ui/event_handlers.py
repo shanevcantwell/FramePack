@@ -14,6 +14,21 @@ from .queue_manager import queue_manager_instance
 logger = logging.getLogger(__name__)
 
 
+def update_scheduler_visibility(choice: str) -> dict:
+    """
+    Returns a dictionary of updates to show/hide sliders based on the
+    selected variable CFG schedule type.
+    """
+    is_rolloff = (choice == "Roll-off")
+    # The End CFG slider is visible for both Linear and Roll-off
+    show_final_gs = is_rolloff or (choice == "Linear")
+
+    return {
+        K.DISTILLED_CFG_END_SLIDER: gr.update(visible=show_final_gs, interactive=show_final_gs),
+        K.ROLL_OFF_START_SLIDER: gr.update(visible=is_rolloff),
+        K.ROLL_OFF_FACTOR_SLIDER: gr.update(visible=is_rolloff),
+    }
+
 def safe_shutdown_action(app_state, *ui_values):
     """Performs all necessary save operations to prepare the app for a clean shutdown."""
     logger.info("Performing safe shutdown saves...")

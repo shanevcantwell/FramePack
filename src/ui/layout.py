@@ -9,6 +9,7 @@ from .enums import ComponentKey as K
 from . import workspace as workspace_manager
 from . import queue as queue_manager
 from . import shared_state as shared_state_module
+from . import switchboard
 
 def create_ui():
     """
@@ -161,6 +162,7 @@ def create_ui():
 
                 with gr.Accordion("Debug Settings", open=False):
                     components[K.USE_TEACACHE_CHECKBOX] = gr.Checkbox(label='Use TeaCache', value=True)
+                    components[K.FORCE_STANDARD_FPS_CHECKBOX] = gr.Checkbox(label="Force Standard FPS (e.g. 29.97)", value=False)
                     # Hide the FP32 checkbox on legacy GPUs, as it's forced on in the backend.
                     is_legacy_gpu = shared_state_module.shared_state_instance.system_info.get('is_legacy_gpu', False)
                     components[K.USE_FP32_TRANSFORMER_OUTPUT_CHECKBOX] = gr.Checkbox(
@@ -183,5 +185,7 @@ def create_ui():
                 components[K.CURRENT_TASK_PROGRESS_DESCRIPTION] = gr.Markdown('')
                 components[K.CURRENT_TASK_PROGRESS_BAR] = gr.HTML('')
                 components[K.LAST_FINISHED_VIDEO] = gr.Video(interactive=True, autoplay=False, height=540)
-
+                
+                switchboard.wire_all_events(components)
+                
     return components

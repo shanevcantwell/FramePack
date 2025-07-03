@@ -93,16 +93,18 @@ def ui_load_params_from_image_metadata(extracted_metadata: dict) -> list:
                 if ui_key in shared_state_module.CREATIVE_UI_KEYS:
                     original_value = value
                     try:
-                        # Sliders expecting integers
-                        if ui_key in ['seed_ui', 'steps_ui', 'preview_frequency_ui']:
-                            # Use float() first to gracefully handle numbers like 25.0
+                        # --- ADD THIS VALIDATION BLOCK ---
+                        if ui_key is K.VARIABLE_CFG_SHAPE_RADIO:
+                            valid_choices = ['Off', 'Linear', 'Roll-off']
+                            if value not in valid_choices:
+                                gr.Warning(f"Invalid metadata value '{value}' for CFG Shape. Reverting to 'Off'.")
+                                value = 'Off' # Default to a safe value
+                        # Compare against the actual enum members, not old strings.
+                        if ui_key in [K.SEED, K.STEPS_SLIDER, K.PREVIEW_FREQUENCY_SLIDER, K.FPS_SLIDER, K.ROLL_OFF_START_SLIDER]:
                             value = int(float(value))
-                        # Sliders expecting floats
-                        elif ui_key in ['total_second_length_ui', 'cfg_ui', 'gs_ui', 'rs_ui', 'gs_final_ui']:
+                        elif ui_key in [K.VIDEO_LENGTH_SLIDER, K.DISTILLED_CFG_START_SLIDER, K.DISTILLED_CFG_END_SLIDER, K.REAL_CFG_SLIDER, K.GUIDANCE_RESCALE_SLIDER, K.ROLL_OFF_FACTOR_SLIDER]:
                             value = float(value)
-                        # The radio button now expects a string, which it gets directly
-                        # after the legacy conversion. No special handling needed here.
-                        # Update the dictionary with the correctly typed value
+                        
                         updates_dict[ui_key] = gr.update(value=value)
 
                     except (ValueError, TypeError):

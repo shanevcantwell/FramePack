@@ -86,7 +86,7 @@ ui_components = layout_manager.create_ui()
 block = ui_components['block']
 
 # --- Event Wiring is delegated to the switchboard ---
-switchboard.wire_all_events(ui_components)
+# switchboard.wire_all_events(ui_components)
 
 # --- Application Load/Startup Events ---
 # atexit.register(queue_manager.autosave_queue_on_exit_action, shared_state_module.shared_state_instance.global_state_for_autosave)
