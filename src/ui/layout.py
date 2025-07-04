@@ -111,7 +111,17 @@ def create_ui():
         display: flex;
         flex-direction: column;
     }
+    /* --- NEW: Styling for progress bar and description to fill column width --- */
+    /* Target the HTML component for the progress bar */
+    #current_task_progress_bar_ui {
+        width: 100% !important;
+    }
+
     /* Makes the element containing the prompts grow to fill the available space */
+    #current_task_progress_description_ui {
+        width: 100% !important;
+    }
+    /* Ensures the Textbox wrappers inside the container also grow */
     .prompt-container {
         flex-grow: 1;
         display: flex;
@@ -137,7 +147,7 @@ def create_ui():
     components[K.BLOCK] = gr.Blocks(css=css, title="goan").queue()
 
     with components[K.BLOCK]:
-        components[K.LAST_COMPLETED_SEED_STATE] = gr.State(None)
+        components[K.LAST_COMPLETED_SEED_STATE] = gr.State(-1)
         components[K.APP_STATE] = gr.State({
             "queue_state": {"queue": [], "next_id": 1, "processing": False, "editing_task_id": None},
             "last_completed_video_path": None,
@@ -147,6 +157,8 @@ def create_ui():
         components[K.EXTRACTED_METADATA_STATE] = gr.State({})
         # components[K.RESUME_LATENT_PATH_STATE] = gr.State(None)
         components[K.METADATA_MODAL_TRIGGER_STATE] = gr.Textbox(visible=False)
+        # New: State component to capture the output of the preview action
+        components[K.PREVIEW_ACTION_OUTPUT_STATE] = gr.State(None)
 
         gr.Markdown('# goan (Powered by FramePack)')
 
@@ -170,8 +182,8 @@ def create_ui():
                     components[K.CLEAR_IMAGE_BUTTON] = gr.Button("Clear Image", variant="secondary", interactive=False, min_width=min_left_column_width, elem_id="clear_image_button")
                     components[K.DOWNLOAD_IMAGE_BUTTON] = gr.Button("Download Image", variant="secondary", interactive=False, min_width=min_left_column_width, elem_id="download_image_button")
             with gr.Column(scale=2, min_width=600):
-                components[K.POSITIVE_PROMPT] = gr.Textbox(label="Prompt", lines=8)
-                components[K.NEGATIVE_PROMPT] = gr.Textbox(label="Negative Prompt", lines=3)
+                components[K.POSITIVE_PROMPT] = gr.Textbox(label="Prompt", lines=10, max_lines=10)
+                components[K.NEGATIVE_PROMPT] = gr.Textbox(label="Negative Prompt", lines=4, max_lines=4)
         with gr.Row():
             with gr.Column(scale=1, min_width=min_left_column_width):
                 components[K.PROCESS_QUEUE_BUTTON] = gr.Button("▶️ Process Queue", variant="primary", interactive=False)
@@ -182,14 +194,14 @@ def create_ui():
             components[K.CURRENT_TASK_PROGRESS_BAR] = gr.HTML('', elem_id="current_task_progress_bar")
             components[K.CURRENT_TASK_PROGRESS_DESCRIPTION] = gr.Markdown('')
         with gr.Row():
-            components[K.VIDEO_LENGTH_SLIDER] = gr.Slider(label="Video Length (s)", minimum=0.1, maximum=120, value=5.0, step=0.1)                
-            components[K.PREVIEW_SPECIFIED_SEGMENTS_TEXTBOX] = gr.Textbox(label="Preview Segments CSV", value="")        
+            components[K.VIDEO_LENGTH_SLIDER] = gr.Slider(label="Video Length (s)", minimum=0.1, maximum=120, value=5.0, step=0.1)
+            components[K.PREVIEW_SPECIFIED_SEGMENTS_TEXTBOX] = gr.Textbox(label="Preview Segments CSV", value="")
             components[K.PREVIEW_FREQUENCY_SLIDER] = gr.Slider(label="Preview Freq.", minimum=0, maximum=100, value=5, step=1)
         with gr.Group():
             # These hidden file components are the targets for one-click downloads.
             components[K.IMAGE_DOWNLOADER] = gr.File(visible=False, elem_id="image_downloader_hidden_file")
             components[K.QUEUE_DOWNLOADER] = gr.File(visible=False, elem_id="queue_downloader_hidden_file")
-            
+
             gr.Markdown("## Task Queue", elem_classes=["queue-title"])
             components[K.QUEUE_DF] = gr.DataFrame(
                 headers=["↑", "↓", "⏸️", "✎", "✖", "Status", "Prompt", "Image", "Length", "ID"],
@@ -203,8 +215,6 @@ def create_ui():
                 components[K.LOAD_QUEUE_BUTTON] = gr.UploadButton("Load Queue", file_types=[".zip"], size="sm", variant="primary")
                 components[K.CLEAR_QUEUE_BUTTON] = gr.Button("Clear Pending", size="sm", variant="stop", interactive=False)
 
-        # with gr.Row(equal_height=False):
-                # gr.Markdown("## Live Preview & Output")
         with gr.Row(equal_height=False):
             components[K.CURRENT_TASK_PREVIEW_IMAGE] = gr.Image(
                     label="Live Latent Preview",
@@ -217,19 +227,19 @@ def create_ui():
             with gr.Column(scale=1):
                 with gr.Accordion("Advanced Settings", open=False):
                     with gr.Row():
-                        with gr.Column(scale=2):    
+                        with gr.Column(scale=2):
                             components[K.SEED] = gr.Number(label="Seed", value=-1, precision=0, minimum=-1, maximum=2**32 - 1)
                         with gr.Column(scale=1):
-                            with gr.Row():    
+                            with gr.Row():
                                 components[K.RANDOM_SEED_BUTTON] = gr.Button("🎲", elem_classes=["icon-button"], scale=1)
                                 components[K.REUSE_SEED_BUTTON] = gr.Button("♻️", elem_classes=["icon-button"], scale=1)
                     with gr.Row():
                         components[K.DISTILLED_CFG_START_SLIDER] = gr.Slider(label="Distilled CFG Start", minimum=1.0, maximum=32.0, value=10.0, step=0.01)
                         components[K.DISTILLED_CFG_END_SLIDER] = gr.Slider(label="Distilled CFG End", minimum=1.0, maximum=32.0, value=10.0, step=0.01, interactive=False)
-                    components[K.VARIABLE_CFG_SHAPE_RADIO] = gr.Radio(["Off", "Linear", "Roll-off"], label="Variable CFG", value="Off")
-                    with gr.Row():                    
+                    with gr.Row():
                         components[K.ROLL_OFF_START_SLIDER] = gr.Slider(label="Roll-off Start %", minimum=0, maximum=100, value=75, step=1, visible=False)
                         components[K.ROLL_OFF_FACTOR_SLIDER] = gr.Slider(label="Roll-off Curve Factor", minimum=0.25, maximum=4.0, value=1.0, step=0.05, visible=False)
+                    components[K.VARIABLE_CFG_SHAPE_RADIO] = gr.Radio(["Off", "Linear", "Roll-off"], label="Variable CFG", value="Off")
                     with gr.Row():
                         components[K.REAL_CFG_SLIDER] = gr.Slider(label="CFG (Real)", minimum=1.0, maximum=8.0, value=1.5, step=0.01)
                         components[K.STEPS_SLIDER] = gr.Slider(label="Steps", minimum=1, maximum=100, value=25, step=1)
@@ -257,7 +267,6 @@ def create_ui():
                     components[K.LATENT_WINDOW_SIZE_SLIDER] = gr.Slider(label="Latent Window Size", minimum=1, maximum=33, value=9, step=1, visible=False)
                     components[K.OUTPUT_FOLDER_TEXTBOX] = gr.Textbox(label="Output Folder", value=workspace_manager.outputs_folder)
                     components[K.SAVE_AS_DEFAULT_BUTTON] = gr.Button("Save as Default", variant="secondary")
-                    components[K.REFRESH_QUEUE_BUTTON] = gr.Button("Force Refresh Queue", size="sm")
                     components[K.RELAUNCH_NOTIFICATION_MD] = gr.Markdown("ℹ️ **Restart required** for new output path to take effect.", visible=False)
             with gr.Column(scale=2):
                 components[K.LAST_FINISHED_VIDEO] = gr.Video(interactive=True, autoplay=False, height=540)

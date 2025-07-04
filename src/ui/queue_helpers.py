@@ -26,11 +26,11 @@ def np_to_base64_uri(np_array_or_tuple, format="png"):
             np_array = np_array_or_tuple
         else:
             return None
-        
+
         pil_image = Image.fromarray(np_array.astype(np.uint8))
         if format.lower() == "jpeg" and pil_image.mode == "RGBA":
             pil_image = pil_image.convert("RGB")
-        
+
         buffer = io.BytesIO()
         pil_image.save(buffer, format=format.upper())
         img_bytes = buffer.getvalue()
@@ -63,12 +63,11 @@ def update_queue_df_display():
         is_processing_current_task = processing and i == 0
         is_pending = status == 'pending'
 
-        # Define button enabled/disabled states based on task status and position.
-        up_enabled = is_pending and i > 0
-        down_enabled = is_pending and i < (total_tasks - 1)
+        up_enabled = is_pending and i > 0 and not is_processing_current_task
+        down_enabled = is_pending and i < (total_tasks - 1) and not is_processing_current_task
         pause_enabled = is_processing_current_task
-        edit_enabled = is_pending
-        cancel_enabled = True # Always allow cancelling
+        edit_enabled = is_pending and not is_processing_current_task
+        cancel_enabled = is_pending or is_processing_current_task
 
         # Generate the markdown for each button.
         up_arrow = _button_markdown('⬆️', up_enabled)
@@ -79,7 +78,7 @@ def update_queue_df_display():
 
         # Create a truncated prompt for display. The 80-character limit is arbitrary for UI neatness.
         prompt_display = (params['prompt'][:PROMPT_DISPLAY_TRUNCATION_LENGTH] + '...') if len(params['prompt']) > 80 else params['prompt']
-        
+
         # --- CORRECTED ---
         # Use html.escape() for a robust and secure tooltip.
         prompt_title = html.escape(params['prompt'], quote=True)
@@ -91,7 +90,7 @@ def update_queue_df_display():
 
         # Consolidated status display logic
         is_editing_this_task = editing_task_id == task_id
-        
+
         status_display = ""
         if is_processing_current_task: status_display = "⏳ Processing"
         elif is_editing_this_task: status_display = "✏️ Editing"
@@ -105,4 +104,4 @@ def update_queue_df_display():
             status_display, prompt_cell, img_md, f"{params.get('video_length', 0):.1f}s", task_id
         ])
 
-    return gr.update(value=data) if data else gr.update(value=[])
+    return gr.update(value=data) if data else gr.update(value=[], headers=["↑", "↓", "⏸️", "✎", "✖", "Status", "Prompt", "Image", "Length", "ID"], datatype=["markdown", "markdown", "markdown", "markdown", "markdown", "markdown", "markdown", "markdown", "str", "number"], col_count=(10, "dynamic"))

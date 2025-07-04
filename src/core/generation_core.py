@@ -109,7 +109,7 @@ def worker(
 
     # Initialize history_latents_for_abort here to ensure it's always defined
     # It will be overwritten within the loop if generation proceeds
-    history_latents_for_abort = None 
+    history_latents_for_abort = None
 
     try:
         if not isinstance(input_image, np.ndarray):
@@ -346,7 +346,7 @@ def worker(
                 if variable_cfg_shape == 'Linear':
                     # Linear interpolation from start to end CFG.
                     current_segment_gs_to_use = initial_gs_from_ui + (distilled_cfg_end - initial_gs_from_ui) * progress
-               
+
                 elif variable_cfg_shape == 'Roll-off':
                     # Roll-off logic adapted for per-segment scheduling.
                     roll_off_start_point = roll_off_start / 100.0
@@ -452,25 +452,23 @@ def worker(
             current_video_frame_count = history_pixels.shape[2]
 
             # --- Handle segment saving ---
-            if shared_state_module.shared_state_instance.preview_request_flag.is_set():
-                logger.info(f"Task {task_id}: Preview requested. Generating video of current progress...")
-                generation_utils.handle_segment_saving(
-                    latent_padding_iteration=latent_padding_iteration,
-                    is_last_section=False,
-                    current_loop_segment_number=current_loop_segment_number,
-                    total_latent_sections=total_latent_sections,
-                    current_video_frame_count=current_video_frame_count,
-                    history_pixels=history_pixels,
-                    task_id=task_id,
-                    job_id=job_id,
-                    output_queue_ref=output_queue_ref,
-                    outputs_folder=outputs_folder,
-                    preview_frequency=0, # Force save
-                    parsed_segments_to_decode_set=set(),
-                    fps=fps,
-                    mp4_crf=mp4_crf,
-                    force_standard_fps=force_standard_fps,
-                )
+            saved_file_path = generation_utils.handle_segment_saving(
+                latent_padding_iteration=latent_padding_iteration,
+                is_last_section=is_last_section,
+                current_loop_segment_number=current_loop_segment_number,
+                total_latent_sections=total_latent_sections,
+                current_video_frame_count=current_video_frame_count,
+                history_pixels=history_pixels,
+                task_id=task_id,
+                job_id=job_id,
+                output_queue_ref=output_queue_ref,
+                outputs_folder=outputs_folder,
+                preview_frequency=preview_frequency,
+                parsed_segments_to_decode_set=parsed_segments_to_decode_set,
+                fps=fps,
+                mp4_crf=mp4_crf,
+                force_standard_fps=force_standard_fps,
+            )
             if final_output_filename:
                 saved_file_path = final_output_filename
                 last_saved_preview_path  = final_output_filename

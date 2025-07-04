@@ -7,7 +7,8 @@ import os
 import zipfile
 import tempfile
 import logging
-import time 
+import time
+import pandas as pd # New: Import pandas for DataFrame handling
 
 from . import shared_state as shared_state_module
 from . import metadata as metadata_manager
@@ -23,6 +24,7 @@ outputs_folder = './outputs/'
 SETTINGS_FILENAME = "goan_settings.json"
 UNLOAD_SAVE_FILENAME = "goan_unload_save.json"
 REFRESH_IMAGE_FILENAME = "goan_refresh_image.png"
+QUEUE_STATE_JSON_IN_ZIP = "queue_state.json" # Ensure this constant is available
 
 # --- Core Save/Load Logic ---
 def get_default_values_map():
@@ -77,7 +79,7 @@ def _apply_settings_dict_to_ui(settings_dict: Dict[K, Any], return_updates=True)
         try:
             # This block ensures that values from JSON (which are often strings)
             # are converted to the correct type for the UI components.
-            if key in [K.SEED, K.LATENT_WINDOW_SIZE_SLIDER, K.STEPS_SLIDER, K.MP4_CRF_SLIDER, K.PREVIEW_FREQUENCY_SLIDER, K.ROLL_OFF_START_SLIDER, K.FPS_SLIDER, 
+            if key in [K.SEED, K.LATENT_WINDOW_SIZE_SLIDER, K.STEPS_SLIDER, K.MP4_CRF_SLIDER, K.PREVIEW_FREQUENCY_SLIDER, K.ROLL_OFF_START_SLIDER, K.FPS_SLIDER,
                        # K.AUTO_RESUME_FREQUENCY, K.AUTO_RESUME_RETENTION
                        ]:
                 value = int(float(value))
@@ -121,6 +123,107 @@ def load_settings_from_file(filepath, return_updates=True):
         gr.Warning(f"Workspace file not found at: {filepath}")
 
     return _apply_settings_dict_to_ui(loaded_settings, return_updates)
+
+def load_queue_from_zip_internal(zip_filepath):
+    """Internal function to load queue state from a zip file."""
+    queue_data = {"queue": [], "next_id": 1, "processing": False, "editing_task_id": None}
+    try:
+        with zipfile.ZipFile(zip_filepath, 'r') as zf:
+            if QUEUE_STATE_JSON_IN_ZIP in zf.namelist():
+                with zf.open(QUEUE_STATE_JSON_IN_ZIP) as f:
+                    loaded_data = json.load(f)
+                    if isinstance(loaded_data, dict):
+                        queue_data.update(loaded_data)
+                    logger.info(f"Queue loaded from {zip_filepath}")
+            else:
+                logger.warning(f"'{QUEUE_STATE_JSON_IN_ZIP}' not found in zip file.")
+    except Exception as e:
+        logger.error(f"Error loading queue from zip: {e}", exc_info=True)
+        gr.Warning(f"Could not load queue from zip: {e}")
+    return queue_data
+
+def load_workspace_on_start() -> Tuple[Dict[str, Any], Optional[Image.Image], pd.DataFrame]:
+    """
+    Loads initial application state, including UI settings, last image, and queue.
+    Returns a tuple of (app_state_dict, input_image_pil, queue_df).
+    """
+    app_state = {
+        "queue_state": {"queue": [], "next_id": 1, "processing": False, "editing_task_id": None},
+        "last_completed_video_path": None,
+        "lora_state": {"loaded_loras": {}},
+        "last_used_seed": -1 # Initialize last_used_seed
+    }
+    input_image_pil = None
+    queue_df = pd.DataFrame(columns=["↑", "↓", "⏸️", "✎", "✖", "Status", "Prompt", "Image", "Length", "ID"])
+
+    settings_file_path = None
+    image_path_to_load = None
+
+    # Prioritize the "unload_save" file which stores the last session state.
+    if os.path.exists(UNLOAD_SAVE_FILENAME):
+        settings_file_path = UNLOAD_SAVE_FILENAME
+        try:
+            with open(settings_file_path, 'r', encoding='utf-8') as f:
+                settings = json.load(f)
+            if "refresh_image_path" in settings and os.path.exists(settings["refresh_image_path"]):
+                image_path_to_load = settings["refresh_image_path"]
+            # Load last_used_seed from settings if available
+            if 'last_used_seed' in settings:
+                app_state['last_used_seed'] = settings['last_used_seed']
+        except (IOError, json.JSONDecodeError) as e:
+            logger.warning(f"Could not read {UNLOAD_SAVE_FILENAME} to find refresh image or last seed: {e}")
+    # Fall back to the default settings file if no unload save exists.
+    elif os.path.exists(SETTINGS_FILENAME):
+        settings_file_path = SETTINGS_FILENAME
+        try:
+            with open(settings_file_path, 'r', encoding='utf-8') as f:
+                settings = json.load(f)
+            if 'last_used_seed' in settings:
+                app_state['last_used_seed'] = settings['last_used_seed']
+        except (IOError, json.JSONDecodeError) as e:
+            logger.warning(f"Could not read {SETTINGS_FILENAME} to find last seed: {e}")
+
+
+    # Load UI settings
+    if settings_file_path:
+        loaded_settings = load_settings_from_json(settings_file_path)
+        # Update app_state with any relevant settings, e.g., output_folder
+        if K.OUTPUT_FOLDER_TEXTBOX in loaded_settings:
+            app_state['output_folder'] = os.path.expanduser(loaded_settings[K.OUTPUT_FOLDER_TEXTBOX])
+        # Apply loaded settings to the default values map for UI components
+        for key, value in loaded_settings.items():
+            # Only update if the key is one of the ALL_TASK_UI_KEYS
+            if key in shared_state_module.ALL_TASK_UI_KEYS:
+                # This ensures that the initial UI components get their values
+                # from the loaded settings. The actual Gradio components will be
+                # updated by the .load event in switchboard_startup.
+                pass # The actual update happens in switchboard_startup
+
+    # Load refresh image
+    if image_path_to_load and os.path.exists(image_path_to_load):
+        try:
+            input_image_pil = Image.open(image_path_to_load).convert('RGBA')
+            # Clean up the temporary session-restore image after loading it.
+            try:
+                os.remove(image_path_to_load)
+            except OSError as e:
+                logger.warning(f"Error deleting temporary refresh image '{image_path_to_load}': {e}")
+        except Exception as e:
+            logger.error(f"Error loading refresh image from '{image_path_to_load}': {e}", exc_info=True)
+            gr.Warning(f"Could not restore image from previous session: {e}")
+            input_image_pil = None
+
+    # Load autosaved queue
+    autosave_queue_path = os.path.join(tempfile.gettempdir(), "goan_autosave_queue.zip")
+    if os.path.exists(autosave_queue_path):
+        queue_data = load_queue_from_zip_internal(autosave_queue_path)
+        app_state['queue_state'].update(queue_data)
+        queue_df = pd.DataFrame(app_state['queue_state']['queue'])
+        logger.info("Autosaved queue loaded on startup.")
+
+    logger.info("Initial workspace loading complete.")
+    return app_state, input_image_pil, queue_df
+
 
 def get_initial_output_folder_from_settings():
     """
@@ -257,6 +360,10 @@ def save_ui_and_image_for_refresh(*args_from_ui_controls_tuple):
             if "refresh_image_path" in settings_to_save: del settings_to_save["refresh_image_path"]
     else:
         if "refresh_image_path" in settings_to_save: del settings_to_save["refresh_image_path"]
+
+    # Include last_used_seed in the saved settings
+    if 'last_used_seed' in shared_state_module.shared_state_instance.global_state_for_autosave:
+        settings_to_save['last_used_seed'] = shared_state_module.shared_state_instance.global_state_for_autosave['last_used_seed']
 
     save_settings_to_file(UNLOAD_SAVE_FILENAME, settings_to_save)
 
