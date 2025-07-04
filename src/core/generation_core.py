@@ -345,7 +345,7 @@ def worker(
 
                 if variable_cfg_shape == 'Linear':
                     # Linear interpolation from start to end CFG.
-                    current_segment_gs_to_use = initial_gs_from_ui + (gs_final_value_for_schedule - initial_gs_from_ui) * progress
+                    current_segment_gs_to_use = initial_gs_from_ui + (distilled_cfg_end - initial_gs_from_ui) * progress
                
                 elif variable_cfg_shape == 'Roll-off':
                     # Roll-off logic adapted for per-segment scheduling.
@@ -355,7 +355,7 @@ def worker(
                     else:
                         roll_off_progress = (progress - roll_off_start_point) / (1.0 - roll_off_start_point)
                         curved_progress = roll_off_progress ** roll_off_factor
-                        current_segment_gs_to_use = initial_gs_from_ui + (gs_final_value_for_schedule - initial_gs_from_ui) * curved_progress
+                        current_segment_gs_to_use = initial_gs_from_ui + (distilled_cfg_end - initial_gs_from_ui) * curved_progress
 
             generated_latents = sample_hunyuan(
                 transformer=transformer,
@@ -452,29 +452,32 @@ def worker(
             current_video_frame_count = history_pixels.shape[2]
 
             # --- Handle segment saving ---
-            saved_file_path = generation_utils.handle_segment_saving(
-                latent_padding_iteration=latent_padding_iteration,
-                is_last_section=is_last_section,
-                current_loop_segment_number=current_loop_segment_number,
-                total_latent_sections=total_latent_sections,
-                current_video_frame_count=current_video_frame_count,
-                history_pixels=history_pixels,
-                task_id=task_id,
-                job_id=job_id,
-                output_queue_ref=output_queue_ref,
-                outputs_folder=outputs_folder,
-                preview_frequency=preview_frequency,
-                parsed_segments_to_decode_set=parsed_segments_to_decode_set,
-                fps=fps,
-                mp4_crf=mp4_crf,
-                force_standard_fps=force_standard_fps,
-            )
+            if shared_state_module.shared_state_instance.preview_request_flag.is_set():
+                logger.info(f"Task {task_id}: Preview requested. Generating video of current progress...")
+                generation_utils.handle_segment_saving(
+                    latent_padding_iteration=latent_padding_iteration,
+                    is_last_section=False,
+                    current_loop_segment_number=current_loop_segment_number,
+                    total_latent_sections=total_latent_sections,
+                    current_video_frame_count=current_video_frame_count,
+                    history_pixels=history_pixels,
+                    task_id=task_id,
+                    job_id=job_id,
+                    output_queue_ref=output_queue_ref,
+                    outputs_folder=outputs_folder,
+                    preview_frequency=0, # Force save
+                    parsed_segments_to_decode_set=set(),
+                    fps=fps,
+                    mp4_crf=mp4_crf,
+                    force_standard_fps=force_standard_fps,
+                )
             if saved_file_path:
                 final_output_filename = saved_file_path
                 graceful_pause_preview_path = saved_file_path
 
             history_latents_for_pause = real_history_latents.clone()
-
+        # Clear the flag to make the button available again
+        shared_state_module.shared_state_instance.preview_request_flag.clear()
         # --- Post-loop logic ---
         success = True
 
