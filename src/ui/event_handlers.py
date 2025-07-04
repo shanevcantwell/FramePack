@@ -14,6 +14,15 @@ from .queue_manager import queue_manager_instance
 logger = logging.getLogger(__name__)
 
 
+def reuse_last_seed_action(last_completed_seed):
+    """Returns the last completed seed, or -1 if none exists."""
+    if last_completed_seed is not None:
+        gr.Info(f"Reusing last completed seed: {last_completed_seed}")
+        return last_completed_seed
+    else:
+        gr.Warning("No task has been completed yet to reuse a seed from.")
+        return gr.update() # Return no-op to not change the value
+
 def safe_shutdown_action(app_state, *ui_values):
     """Performs all necessary save operations to prepare the app for a clean shutdown."""
     logger.info("Performing safe shutdown saves...")
@@ -115,7 +124,11 @@ def get_button_state_outputs(components: dict) -> list:
     """Returns the list of button components for state updates."""
     return [components[key] for key in BUTTON_KEYS]
 
-def update_button_states(app_state, input_image_pil, queue_df_data):
+# --- MODIFICATION ---
+# Removed the `queue_df_data` parameter from the function signature.
+# This completes the fix by aligning the function definition with its call sites,
+# which now correctly pass only two arguments. This resolves the UserWarning on startup.
+def update_button_states(app_state, input_image_pil):
     """
     Updates button states based on a declarative rules engine. This function
     is the single source of truth for the state of all major control buttons.

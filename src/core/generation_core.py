@@ -471,9 +471,8 @@ def worker(
                     mp4_crf=mp4_crf,
                     force_standard_fps=force_standard_fps,
                 )
-            if saved_file_path:
-                final_output_filename = saved_file_path
-                graceful_pause_preview_path = saved_file_path
+            if final_output_filename:
+                last_saved_preview_path  = final_output_filename
 
             history_latents_for_pause = real_history_latents.clone()
         # Clear the flag to make the button available again

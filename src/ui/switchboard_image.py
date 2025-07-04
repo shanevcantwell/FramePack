@@ -45,7 +45,6 @@ def wire_events(components: dict):
         components[K.METADATA_PROMPT_PREVIEW],
         components[K.EXTRACTED_METADATA_STATE],
         components[K.METADATA_MODAL_TRIGGER_STATE],
-    #     components[K.RESUME_LATENT_PATH_STATE]
     ] + creative_ui_components
 
     (components[K.IMAGE_FILE_INPUT].upload(
@@ -54,7 +53,10 @@ def wire_events(components: dict):
         outputs=upload_outputs
     ).then(
         fn=event_handlers.update_button_states,
-        inputs=[components[K.APP_STATE], components[K.INPUT_IMAGE_DISPLAY], components[K.IMAGE_FILE_INPUT]],
+        # --- MODIFICATION ---
+        # Removed components[K.IMAGE_FILE_INPUT] from the inputs list to match
+        # the updated two-argument signature of the event handler.
+        inputs=[components[K.APP_STATE], components[K.INPUT_IMAGE_DISPLAY]],
         outputs=button_state_outputs
     ))
 
@@ -62,7 +64,9 @@ def wire_events(components: dict):
         fn=event_handlers.clear_image_action, inputs=None, outputs=clear_button_outputs
     ).then(
         fn=event_handlers.update_button_states,
-        inputs=[components[K.APP_STATE], components[K.INPUT_IMAGE_DISPLAY], components[K.IMAGE_FILE_INPUT]],
+        # --- MODIFICATION ---
+        # Removed components[K.IMAGE_FILE_INPUT] from the inputs list here as well.
+        inputs=[components[K.APP_STATE], components[K.INPUT_IMAGE_DISPLAY]],
         outputs=button_state_outputs
     ))
 

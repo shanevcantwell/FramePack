@@ -11,6 +11,7 @@ import html
 
 from .queue_manager import queue_manager_instance
 
+PROMPT_DISPLAY_TRUNCATION_LENGTH = 77
 logger = logging.getLogger(__name__)
 
 def np_to_base64_uri(np_array_or_tuple, format="png"):
@@ -77,7 +78,7 @@ def update_queue_df_display():
         cancel_button = _button_markdown('✖️', cancel_enabled)
 
         # Create a truncated prompt for display. The 80-character limit is arbitrary for UI neatness.
-        prompt_display = (params['prompt'][:77] + '...') if len(params['prompt']) > 80 else params['prompt']
+        prompt_display = (params['prompt'][:PROMPT_DISPLAY_TRUNCATION_LENGTH] + '...') if len(params['prompt']) > 80 else params['prompt']
         
         # --- CORRECTED ---
         # Use html.escape() for a robust and secure tooltip.

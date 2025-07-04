@@ -9,9 +9,13 @@ class ComponentKey(StrEnum):
     """
     # High-level Components
     BLOCK = auto()
+    
     APP_STATE = auto()
+    RANDOM_SEED_BUTTON = auto()
+    REUSE_SEED_BUTTON = auto() 
 
     # --- State Components ---
+    LAST_COMPLETED_SEED_STATE = auto() 
     LORA_NAME_STATE = auto()
     EXTRACTED_METADATA_STATE = auto()
     METADATA_MODAL_TRIGGER_STATE = auto()
@@ -85,4 +89,5 @@ class ComponentKey(StrEnum):
     LATENT_WINDOW_SIZE_SLIDER = auto()
     OUTPUT_FOLDER_TEXTBOX = auto()
     SAVE_AS_DEFAULT_BUTTON = auto()
+    REFRESH_QUEUE_BUTTON = auto() 
     RELAUNCH_NOTIFICATION_MD = auto()

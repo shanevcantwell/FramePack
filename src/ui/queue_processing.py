@@ -67,6 +67,15 @@ def process_task_queue_and_listen(*lora_control_values):
                 # The agent has signaled the end of all processing.
                 logger.info("UI listener received 'queue_finished' signal. Exiting loop.")
                 break
+            elif flag == "task_seed_completed":
+                yield {
+                    # This will update the value of our new gr.State component
+                    # You must add LAST_COMPLETED_SEED_STATE to the outputs list
+                    # of the PROCESS_QUEUE_BUTTON click event in switchboard_queue.py
+                    components[K.LAST_COMPLETED_SEED_STATE]: data,
+                    # Add no-op updates for other outputs
+                    **{comp: gr.update() for comp in all_other_outputs_list}
+                }
 
         except queue.Empty:
             # If the queue is empty, we check if the agent is still processing.

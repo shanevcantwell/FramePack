@@ -99,8 +99,11 @@ class ProcessingAgent(threading.Thread):
                 lora_handler.apply_lora(*lora_controls)
 
             while not shared_state_module.shared_state_instance.interrupt_flag.is_set():
-                task = queue_manager_instance.get_and_start_next_task()
-
+                # task = queue_manager_instance.get_and_start_next_task()
+                if shared_state_module.shared_state_instance.interrupt_flag.is_set():
+                    break
+                
+                task = queue_manager_instance.get_and_start_next_task()                
                 if task is None:  # No more pending tasks
                     ui_update_queue.put(("info", "All tasks processed."))
                     break
@@ -136,6 +139,8 @@ class ProcessingAgent(threading.Thread):
                     if flag == "end":
                         _, success, final_path = data
                         task_final_status = "done" if success else "error"
+                        if success and task and "params" in task and "seed" in task["params"]:
+                            ui_update_queue.put(("task_seed_completed", task["params"]["seed"]))
                         final_output_path = final_path
                         break
                     elif flag == "crash":

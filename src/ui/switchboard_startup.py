@@ -52,7 +52,10 @@ def wire_events(components: dict):
         outputs=[components[K.TOTAL_SEGMENTS_DISPLAY]]
     ).then(
         fn=event_handlers.update_button_states,
-        inputs=[components[K.APP_STATE], components[K.INPUT_IMAGE_DISPLAY], components[K.QUEUE_DF]],
+        # --- MODIFICATION ---
+        # Removed components[K.QUEUE_DF] to match the two-argument signature
+        # of the update_button_states function. This resolves the startup warning.
+        inputs=[components[K.APP_STATE], components[K.INPUT_IMAGE_DISPLAY]],
         outputs=button_state_outputs
     ))
 

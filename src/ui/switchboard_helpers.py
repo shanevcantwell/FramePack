@@ -19,9 +19,18 @@ def chain_event_updates(event, components: dict, update_segments: bool = False):
     button_state_outputs = event_handlers.get_button_state_outputs(components)
     event.then(
         fn=event_handlers.update_button_states,
-        inputs=[components[K.APP_STATE], components[K.INPUT_IMAGE_DISPLAY], components[K.IMAGE_FILE_INPUT]
-                ],
+        # This inputs list MUST only contain these two components.
+        inputs=[components[K.APP_STATE], components[K.INPUT_IMAGE_DISPLAY]],
         outputs=button_state_outputs
     )
     if update_segments:
         segment_recalc_inputs = [
+            components[K.VIDEO_LENGTH_SLIDER],
+            components[K.LATENT_WINDOW_SIZE_SLIDER],
+            components[K.FPS_SLIDER]
+        ]
+        event.then(
+            fn=event_handlers.ui_update_total_segments,
+            inputs=segment_recalc_inputs,
+            outputs=[components[K.TOTAL_SEGMENTS_DISPLAY]]
+        )

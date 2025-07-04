@@ -37,7 +37,10 @@ def wire_events(components: dict):
     #     outputs=full_workspace_ui_components
     # ).then(
     #     fn=event_handlers.update_button_states,
-    #     inputs=[components[K.APP_STATE], components[K.INPUT_IMAGE_DISPLAY], components[K.QUEUE_DF]],
+    #     # --- PREVENTATIVE MODIFICATION ---
+    #     # Removed components[K.QUEUE_DF] from this inactive code block
+    #     # to prevent future errors if this feature is re-enabled.
+    #     inputs=[components[K.APP_STATE], components[K.INPUT_IMAGE_DISPLAY]],
     #     outputs=button_state_outputs
     # ))
     components[K.SAVE_AS_DEFAULT_BUTTON].click(
