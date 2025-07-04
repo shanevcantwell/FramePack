@@ -472,6 +472,7 @@ def worker(
                     force_standard_fps=force_standard_fps,
                 )
             if final_output_filename:
+                saved_file_path = final_output_filename
                 last_saved_preview_path  = final_output_filename
 
             history_latents_for_pause = real_history_latents.clone()

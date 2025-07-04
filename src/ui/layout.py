@@ -158,21 +158,22 @@ def create_ui():
                 components[K.CANCEL_METADATA_BUTTON] = gr.Button("No")
                 components[K.CONFIRM_METADATA_BUTTON] = gr.Button("Yes, Apply", variant="primary")
 
+        min_left_column_width = 300
         with gr.Row():
-            with gr.Column(scale=1, min_width=300):
+            with gr.Column(scale=1, min_width=min_left_column_width):
                 components[K.IMAGE_FILE_INPUT] = gr.File(label="Drop Image or .goan_resume File Here", file_types=["image", ".zip", ".goan_resume"], elem_id="image_file_input_ui")
                 components[K.INPUT_IMAGE_DISPLAY] = gr.Image(type="pil", label="Current Input Image", interactive=False, visible=False, height=220, show_download_button=False)
                 with gr.Row():
-                    components[K.ADD_TASK_BUTTON] = gr.Button("Add to Queue", variant="secondary", interactive=False)
-                    components[K.CANCEL_EDIT_TASK_BUTTON] = gr.Button("Cancel Edit", visible=False, variant="secondary")
-                with gr.Row():
-                    components[K.CLEAR_IMAGE_BUTTON] = gr.Button("Clear Image", variant="secondary", interactive=False, elem_id="clear_image_button")
-                    components[K.DOWNLOAD_IMAGE_BUTTON] = gr.Button("Download Image", variant="secondary", interactive=False, elem_id="download_image_button")
+                    components[K.ADD_TASK_BUTTON] = gr.Button("Add to Queue", variant="secondary", interactive=False, min_width=min_left_column_width)
+                    components[K.CANCEL_EDIT_TASK_BUTTON] = gr.Button("Cancel Edit", visible=False, variant="secondary", min_width=min_left_column_width)
+                # with gr.Row():
+                    components[K.CLEAR_IMAGE_BUTTON] = gr.Button("Clear Image", variant="secondary", interactive=False, min_width=min_left_column_width, elem_id="clear_image_button")
+                    components[K.DOWNLOAD_IMAGE_BUTTON] = gr.Button("Download Image", variant="secondary", interactive=False, min_width=min_left_column_width, elem_id="download_image_button")
             with gr.Column(scale=2, min_width=600):
                 components[K.POSITIVE_PROMPT] = gr.Textbox(label="Prompt", lines=8)
                 components[K.NEGATIVE_PROMPT] = gr.Textbox(label="Negative Prompt", lines=3)
         with gr.Row():
-            with gr.Column(scale=1, min_width=300):
+            with gr.Column(scale=1, min_width=min_left_column_width):
                 components[K.PROCESS_QUEUE_BUTTON] = gr.Button("▶️ Process Queue", variant="primary", interactive=False)
             with gr.Column(scale=2, min_width=600):
                 components[K.CREATE_PREVIEW_BUTTON] = gr.Button("📸 Create Preview", variant="secondary", interactive=False, elem_id="create_preview_button")
