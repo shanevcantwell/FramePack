@@ -23,3 +23,5 @@ def wire_events(components: dict):
         inputs=[components[K.APP_STATE], components[K.LORA_UPLOAD_BUTTON]],
         outputs=lora_upload_and_refresh_outputs
     )
+    
+    

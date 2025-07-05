@@ -24,6 +24,19 @@ def wire_events(components: dict):
             components[K.ROLL_OFF_FACTOR_SLIDER]: gr.update(visible=show_rolloff_sliders),
         }
 
+    # # Wire the Random Seed button
+    # components[K.RANDOM_SEED_BUTTON].click(
+    #     fn=event_handlers.generate_random_seed_action,
+    #     inputs=None,
+    #     outputs=[components[K.SEED]]
+    # )
+
+    # # Wire the Reuse Seed button
+    # components[K.REUSE_SEED_BUTTON].click(
+    #     fn=event_handlers.reuse_last_seed_action,
+    #     inputs=[components[K.LAST_COMPLETED_SEED_STATE]],
+    #     outputs=[components[K.SEED]]
+    # )
     components[K.VARIABLE_CFG_SHAPE_RADIO].change(
         fn=update_scheduler_visibility,
         inputs=[components[K.VARIABLE_CFG_SHAPE_RADIO]],

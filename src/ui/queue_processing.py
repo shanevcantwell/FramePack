@@ -88,4 +88,4 @@ def process_task_queue_and_listen(*lora_control_values):
 def request_preview_generation_action():
     """Triggers a preview generation request to the ProcessingAgent."""
     ProcessingAgent().send({"type": "preview"})
-
+    return gr.update(interactive=False, variant="secondary")

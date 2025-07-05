@@ -109,7 +109,7 @@ def worker(
 
     # Initialize history_latents_for_abort here to ensure it's always defined
     # It will be overwritten within the loop if generation proceeds
-    history_latents_for_abort = None 
+    history_latents_for_abort = None
 
     try:
         if not isinstance(input_image, np.ndarray):
@@ -304,6 +304,12 @@ def worker(
             )
 
             def callback_diffusion_step(d):
+                # Check the interrupt flag on every diffusion step for maximum responsiveness.
+                if shared_state_module.shared_state_instance.interrupt_flag.is_set():
+                    # Raising an exception is the only way to break out of the sampler's inner loop.
+                    # The worker's main try/except block is designed to catch this.
+                    raise InterruptedError("Stop signal received during sampling.")
+
                 current_diffusion_step = d["i"] + 1
                 preview_latent = d["denoised"]
                 preview_img_np = vae_decode_fake(preview_latent)
@@ -345,8 +351,8 @@ def worker(
 
                 if variable_cfg_shape == 'Linear':
                     # Linear interpolation from start to end CFG.
-                    current_segment_gs_to_use = initial_gs_from_ui + (gs_final_value_for_schedule - initial_gs_from_ui) * progress
-               
+                    current_segment_gs_to_use = initial_gs_from_ui + (distilled_cfg_end - initial_gs_from_ui) * progress
+
                 elif variable_cfg_shape == 'Roll-off':
                     # Roll-off logic adapted for per-segment scheduling.
                     roll_off_start_point = roll_off_start / 100.0
@@ -355,7 +361,7 @@ def worker(
                     else:
                         roll_off_progress = (progress - roll_off_start_point) / (1.0 - roll_off_start_point)
                         curved_progress = roll_off_progress ** roll_off_factor
-                        current_segment_gs_to_use = initial_gs_from_ui + (gs_final_value_for_schedule - initial_gs_from_ui) * curved_progress
+                        current_segment_gs_to_use = initial_gs_from_ui + (distilled_cfg_end - initial_gs_from_ui) * curved_progress
 
             generated_latents = sample_hunyuan(
                 transformer=transformer,
@@ -419,9 +425,7 @@ def worker(
                         task_id,
                         None,  # No image preview here
                         f"Segment {current_loop_segment_number}/{total_latent_sections}: Decoding frames...",
-                        make_progress_bar_html(
-                            100, "VAE Decode"
-                        ),  # Progress bar is full from sampling
+                        make_progress_bar_html(100, "VAE Decode"),
                     ),
                 )
             )
@@ -451,6 +455,7 @@ def worker(
 
             current_video_frame_count = history_pixels.shape[2]
 
+            is_manual_preview_request = shared_state_module.shared_state_instance.preview_request_flag.is_set()
             # --- Handle segment saving ---
             saved_file_path = generation_utils.handle_segment_saving(
                 latent_padding_iteration=latent_padding_iteration,
@@ -468,6 +473,7 @@ def worker(
                 fps=fps,
                 mp4_crf=mp4_crf,
                 force_standard_fps=force_standard_fps,
+                is_manual_request=is_manual_preview_request,
             )
             if saved_file_path:
                 final_output_filename = saved_file_path

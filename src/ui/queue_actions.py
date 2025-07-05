@@ -117,3 +117,98 @@ def cancel_edit_mode_action(from_ui=True):
         # This is for when called internally, like after updating a task.
         # It matches the output signature of the add/update task event.
         return cancel_edit_mode_action(from_ui=True)
+    
+    # [svc] Add this missing function and dictionary back into ui/queue_actions.py
+
+# This mapping must match the header order in the DataFrame defined in layout.py
+ACTION_COLUMN_MAP = {
+    0: 'move_up',
+    1: 'move_down',
+    2: 'pause',
+    3: 'edit',
+    4: 'cancel'
+}
+
+def handle_queue_action_on_select(evt: gr.SelectData, *args):
+    """
+    Handles user clicks on action icons within the queue DataFrame.
+    This function was restored from a previous version to fix queue interactivity.
+    """
+    # Define the expected number of outputs to match the switchboard's 'add_task_outputs' list
+    num_outputs = len(shared_state_module.ALL_TASK_UI_KEYS) + 8
+    if evt.index is None:
+        return [gr.update()] * num_outputs
+
+    row_index, col_index = evt.index
+
+    if col_index not in ACTION_COLUMN_MAP:
+        logger.debug(f"Click on non-action column ({col_index}), ignoring.")
+        return [gr.update()] * num_outputs
+
+    action = ACTION_COLUMN_MAP[col_index]
+    queue_state = queue_manager_instance.get_state()
+    queue = queue_state.get("queue", [])
+
+    if not (0 <= row_index < len(queue)):
+        logger.warning(f"Invalid row index {row_index} for queue action.")
+        return [gr.update()] * num_outputs
+
+    task = queue[row_index]
+    task_id = task['id']
+    status = task.get("status", "pending")
+    is_processing = status == 'processing' or (queue_state.get("processing", False) and row_index == 0)
+    is_pending = status == 'pending'
+
+    # --- Backend Enforcement of Disabled State ---
+    if action in ['move_up', 'move_down', 'edit'] and not is_pending:
+        gr.Info(f"Cannot '{action}' a task that is not 'Pending'.")
+        return [gr.update()] * num_outputs
+    if action == 'pause' and not is_processing:
+        gr.Info("Can only pause a task that is currently 'Processing'.")
+        return [gr.update()] * num_outputs
+
+    # --- Handle Action ---
+    if action == "move_up":
+        queue_manager_instance.move_task('up', row_index)
+    elif action == "move_down":
+        queue_manager_instance.move_task('down', row_index)
+    elif action == "cancel":
+        if is_processing:
+            gr.Info(f"Stopping and removing currently processing task {queue[0]['id']}...")
+            ProcessingAgent().send({"type": "stop"})
+            # Return immediately; the agent will send UI updates when the task is stopped.
+            return [gr.update()] * num_outputs
+        else:
+            removed_id = queue_manager_instance.remove_task(row_index)
+            # If we deleted the task we were editing, cancel edit mode.
+            if removed_id is not None and queue_state.get("editing_task_id") == removed_id:
+                return cancel_edit_mode_action()
+    elif action == "edit":
+        task_to_edit = queue_manager_instance.get_task_to_edit(row_index)
+        if not task_to_edit:
+            return [gr.update()] * num_outputs
+
+        params_to_load_to_ui = task_to_edit['params']
+        img_np_from_task = params_to_load_to_ui.get('input_image')
+        img_display_update = gr.update(value=Image.fromarray(img_np_from_task), visible=True) if isinstance(img_np_from_task, np.ndarray) else gr.update(value=None, visible=False)
+        file_input_update = gr.update(visible=False)
+        
+        # This mapping is complex, as it matches the 'add_task_outputs' in the switchboard
+        ui_updates = [gr.update(value=params_to_load_to_ui.get(shared_state_module.UI_TO_WORKER_PARAM_MAP.get(key), None)) for key in workspace_manager.get_default_values_map().keys()]
+        
+        final_updates = (
+            [gr.update(), queue_helpers.update_queue_df_display(), img_display_update, file_input_update] +
+            ui_updates +
+            [gr.update(interactive=True), gr.update(interactive=True), gr.update(value="Update Task", variant="primary"), gr.update(visible=True)]
+        )
+        return final_updates
+    elif action == "pause":
+        gr.Info(f"Requesting pause for task {task_id}...")
+        ProcessingAgent().send({"type": "pause"})
+        # Return immediately; the agent will send UI updates.
+        return [gr.update()] * num_outputs
+
+    # Default case: just update the queue display if a move or simple delete happened.
+    updates = [gr.update()] * num_outputs
+    updates[1] = queue_helpers.update_queue_df_display()
+    return updates

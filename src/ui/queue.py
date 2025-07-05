@@ -129,7 +129,7 @@ def handle_queue_action_on_select(*args, evt: gr.SelectData):
         if is_processing:
             gr.Info(f"Stopping and removing currently processing task {queue[0]['id']}...")
             agents.ProcessingAgent().send({"type": "stop"})
-            # The agent will handle the task status change. We just update the display.
+            return [gr.update()] * num_outputs
         else:
             removed_id = queue_manager_instance.remove_task(row_index)
             if removed_id is not None and queue_state.get("editing_task_id") == removed_id:
@@ -154,9 +154,11 @@ def handle_queue_action_on_select(*args, evt: gr.SelectData):
         )
         return final_updates
     elif action == "pause":
-        gr.Info(f"Requesting pause for task {task_id}...")
-        agents.ProcessingAgent().send({"type": "pause"})
+        # gr.Info(f"Requesting pause for task {task_id}...")
+        gr.Warning(f"In development: Pausing tasks is not yet implemented.")
+        # agents.ProcessingAgent().send({"type": "pause"})
         # No immediate UI update needed, the worker will signal back.
+        return [gr.update()] * num_outputs
 
     # Default case: just update the queue display if a move or simple delete happened.
     updates = [gr.update()] * num_outputs

@@ -105,6 +105,8 @@ def initialize_job(
     return total_latent_sections, job_id
 
 
+# Replace the old handle_segment_saving function with this updated version.
+
 def handle_segment_saving(
     # Loop state
     latent_padding_iteration: int,
@@ -123,21 +125,18 @@ def handle_segment_saving(
     parsed_segments_to_decode_set: Set[int],
     fps: int,
     mp4_crf: int,
-    force_standard_fps: bool = False
+    force_standard_fps: bool = False,
+    # Add new argument to receive the request status from the worker.
+    is_manual_request: bool = False
 ) -> Optional[str]:
     """
     Handles the logic for saving an MP4 for the current segment, either automatically
     or by user request. This is the second "secret sauce" block.
     Returns the path to the saved file, or None if no file was saved.
     """
-    # First, check if a preview has been manually requested by the user.
-    is_preview_request = shared_state_instance.preview_request_flag.is_set()
-    if is_preview_request:
-        # IMPORTANT: Clear the flag immediately after checking. This is the core of the
-        # "graceful preview" feature, ensuring the worker continues generation.
-        shared_state_instance.preview_request_flag.clear()
+    # The logic to check the global flag is removed from this function.
 
-    # Next, determine if we should save based on any of the automatic criteria.
+    # Determine if we should save based on any of the automatic criteria.
     should_save_automatically = (
         latent_padding_iteration == 0  # Always save the very first segment
         or is_last_section  # Always save the final completed video
@@ -150,8 +149,13 @@ def handle_segment_saving(
         )  # Save based on the periodic preview_frequency setting
     )
 
-    if is_preview_request or should_save_automatically:
-        save_hint = "Saving Preview..." if is_preview_request else "Saving Segment..."
+    # The main condition now uses the argument passed from the worker.
+    if is_manual_request or should_save_automatically:
+        # If we are saving due to a manual request, "consume" it by clearing the flag here.
+        if is_manual_request:
+            shared_state_instance.preview_request_flag.clear()
+
+        save_hint = "Saving Preview..." if is_manual_request else "Saving Segment..."
         if is_last_section:
             save_hint = "Saving Final Video..."
 
@@ -164,6 +168,7 @@ def handle_segment_saving(
         output_queue_ref.push(("file", (task_id, segment_mp4_filename, f"Segment {current_loop_segment_number} MP4 saved ({current_video_frame_count} frames)")))
         return segment_mp4_filename
     else:
+        # This part of the logic remains unchanged.
         logger.info(f"Task {task_id}: SKIPPED MP4 save for intermediate segment {current_loop_segment_number}.")
         return None
 

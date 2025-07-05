@@ -143,10 +143,8 @@ def update_queue_df_display():
         cancel_button = _button_markdown('✖️', cancel_enabled)
 
         # Create a truncated prompt for display and a full-text tooltip
-        prompt_display = (params['prompt'][:77] + '...') if len(params['prompt']) > 80 else params['prompt']  # ASSISTANT: 77 is CLIP. I thought I heard 512 for the llama vector + CLIP
-        prompt_title = params['prompt'].replace('"', '&quot;') # ASSISTANT: This really needs to be more robust - doesn't python have something to escape?
-        prompt_cell = f'<span title="{prompt_title}">{prompt_display}</span>'
-
+        prompt_display = (params['prompt'][:77] + '...') if len(params['prompt']) > 80 else params['prompt'] 
+        
         # Create an image thumbnail for the DataFrame
         img_uri = np_to_base64_uri(params.get('input_image'), format="png")
         thumbnail_size = "50px"

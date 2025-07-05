@@ -65,6 +65,9 @@ class ProcessingAgent(threading.Thread):
                 self._handle_start(message)
             elif message.get("type") == "stop":
                 self._handle_stop()
+            elif message.get("type") == "preview":
+                self._handle_preview()
+
 
     def _handle_start(self, message):
         if self.is_processing:
@@ -90,6 +93,16 @@ class ProcessingAgent(threading.Thread):
         shared_state_module.shared_state_instance.interrupt_flag.set()
         logger.info("Stop signal sent to worker. Worker will stop and finalize the current task.")
 
+    def _handle_preview(self):
+        """Handles a request to generate a preview for the current segment."""
+        if not self.is_processing:
+            ui_update_queue.put(("info", "Cannot generate a preview when not processing."))
+            return
+        
+        logger.info("Preview request received by agent. Setting flag.")
+        shared_state_module.shared_state_instance.preview_request_flag.set()
+        ui_update_queue.put(("info", "Preview requested. It will generate after the current sampling step."))    
+    
     def _processing_loop(self, start_message):
         lora_controls = start_message.get("lora_controls")
 
@@ -99,6 +112,8 @@ class ProcessingAgent(threading.Thread):
                 lora_handler.apply_lora(*lora_controls)
 
             while not shared_state_module.shared_state_instance.interrupt_flag.is_set():
+                if shared_state_module.shared_state_instance.interrupt_flag.is_set():
+                    break
                 task = queue_manager_instance.get_and_start_next_task()
 
                 if task is None:  # No more pending tasks
@@ -110,7 +125,7 @@ class ProcessingAgent(threading.Thread):
                 output_stream = AsyncStream()
                 worker_args = {**task["params"], "task_id": task["id"], **shared_state_module.shared_state_instance.models}
                 worker_args.pop('transformer', None)
-                
+
                 # The worker needs new arguments that the UI doesn't provide yet.
                 # We add safe default values here to satisfy the full function signature.
                 worker_args.setdefault('resume_latent_path', None)
@@ -118,8 +133,8 @@ class ProcessingAgent(threading.Thread):
                 worker_args.setdefault('auto_resume_retention', 0)
 
                 # This key is likely missing from your UI mapping. We'll default it to False.
-                worker_args.setdefault('force_standard_fps', False) 
-                
+                worker_args.setdefault('force_standard_fps', False)
+
                 async_run(worker_wrapper, output_queue_ref=output_stream.output_queue, **worker_args)
 
                 task_final_status = "error"

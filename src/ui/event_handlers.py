@@ -14,6 +14,15 @@ from .queue_manager import queue_manager_instance
 logger = logging.getLogger(__name__)
 
 
+# def reuse_last_seed_action(last_completed_seed):
+#     """Returns the last completed seed, or -1 if none exists."""
+#     if last_completed_seed is not None:
+#         gr.Info(f"Reusing last completed seed: {last_completed_seed}")
+#         return last_completed_seed
+#     else:
+#         gr.Warning("No task has been completed yet to reuse a seed from.")
+#         return gr.update() # Return no-op to not change the value
+
 def safe_shutdown_action(app_state, *ui_values):
     """Performs all necessary save operations to prepare the app for a clean shutdown."""
     logger.info("Performing safe shutdown saves...")
@@ -50,6 +59,8 @@ def process_upload_and_show_image(temp_file_data):
         return (
             gr.update(visible=True, value=None),    # IMAGE_FILE_INPUT
             gr.update(visible=False, value=None),   # INPUT_IMAGE_DISPLAY
+            
+            # [svc: are these actually effectively just 1 thing? When are they ever changed indpendently? Maybe during edit...]
             gr.update(interactive=False),           # CLEAR_IMAGE_BUTTON
             gr.update(interactive=False),           # DOWNLOAD_IMAGE_BUTTON
             gr.update(variant="secondary"),         # ADD_TASK_BUTTON
@@ -85,7 +96,7 @@ def prepare_image_for_download(pil_image, app_state, ui_keys, *creative_values):
         return None
 
     image_copy = pil_image.copy()
-    params_dict = metadata_manager.create_params_from_ui(ui_keys, creative_values) # ui_keys is passed in, so it's fine
+    params_dict = metadata_manager.create_params_from_ui(ui_keys, creative_values) 
 
     lora_state = app_state.get('lora_state', {})
     if lora_state and lora_state.get('loaded_loras'):
@@ -106,6 +117,8 @@ BUTTON_KEYS = [
     K.PROCESS_QUEUE_BUTTON,
     K.CREATE_PREVIEW_BUTTON,
     K.CLEAR_IMAGE_BUTTON,
+    
+    # [svc: output they're definitely each unique]
     K.DOWNLOAD_IMAGE_BUTTON,
     K.SAVE_QUEUE_BUTTON,
     K.CLEAR_QUEUE_BUTTON,
@@ -125,8 +138,12 @@ def update_button_states(app_state, input_image_pil, queue_df_data):
     is_editing = queue_state.get("editing_task_id") is not None
     is_processing = queue_state.get("processing", False)
     is_editing_processing_task = is_editing and is_processing and queue_state.get("queue") and queue_state["editing_task_id"] == queue_state["queue"][0]["id"]
+
+    # Check if a stop has been requested (e.g., by clicking "Stop Processing")
+    stop_requested = shared_state_module.shared_state_instance.stop_requested_flag.is_set()
+
     state = {
-        'stop_requested': shared_state_module.shared_state_instance.stop_requested_flag.is_set(),
+        'stop_requested': stop_requested, # Use the flag
         'is_editing': is_editing,
         'is_processing': is_processing,
         'is_editing_processing_task': is_editing_processing_task,
@@ -141,28 +158,40 @@ def update_button_states(app_state, input_image_pil, queue_df_data):
     rules = [
         {'condition': lambda s: s['stop_requested'], 'get_updates': lambda s: {
             K.PROCESS_QUEUE_BUTTON: gr.update(interactive=False, value="Stopping...", variant="stop"),
-            K.ADD_TASK_BUTTON: gr.update(interactive=False), K.CREATE_PREVIEW_BUTTON: gr.update(interactive=False),
-            K.CLEAR_IMAGE_BUTTON: gr.update(interactive=False), K.DOWNLOAD_IMAGE_BUTTON: gr.update(interactive=False),
-            K.SAVE_QUEUE_BUTTON: gr.update(interactive=False), K.CLEAR_QUEUE_BUTTON: gr.update(interactive=False),
+            K.ADD_TASK_BUTTON: gr.update(interactive=False),
+            K.CREATE_PREVIEW_BUTTON: gr.update(interactive=False),
+            K.CLEAR_IMAGE_BUTTON: gr.update(interactive=False),
+            K.DOWNLOAD_IMAGE_BUTTON: gr.update(interactive=False),                                                                                                             
+            K.SAVE_QUEUE_BUTTON: gr.update(interactive=False),
+            K.CLEAR_QUEUE_BUTTON: gr.update(interactive=False),
         }},
         {'condition': lambda s: s['is_editing'], 'get_updates': lambda s: {
             K.ADD_TASK_BUTTON: gr.update(interactive=not s['is_editing_processing_task'], variant="primary"),
             K.PROCESS_QUEUE_BUTTON: gr.update(interactive=False, value="▶️ Process Queue", variant="secondary"),
             K.CREATE_PREVIEW_BUTTON: gr.update(interactive=False, variant="secondary"),
-            K.CLEAR_IMAGE_BUTTON: gr.update(interactive=False, variant="secondary"), K.DOWNLOAD_IMAGE_BUTTON: gr.update(interactive=False, variant="secondary"),
-            K.SAVE_QUEUE_BUTTON: gr.update(interactive=False, variant="secondary"), K.CLEAR_QUEUE_BUTTON: gr.update(interactive=False, variant="secondary"),
+            K.CLEAR_IMAGE_BUTTON: gr.update(interactive=False, variant="secondary"),
+            K.DOWNLOAD_IMAGE_BUTTON: gr.update(interactive=False, variant="secondary"),
+            K.SAVE_QUEUE_BUTTON: gr.update(interactive=False, variant="secondary"),
+            K.CLEAR_QUEUE_BUTTON: gr.update(interactive=False, variant="secondary"),
         }},
         {'condition': lambda s: s['is_processing'], 'get_updates': lambda s: {
             K.PROCESS_QUEUE_BUTTON: gr.update(interactive=True, value="⏹️ Stop Processing", variant="stop"),
-            K.CREATE_PREVIEW_BUTTON: gr.update(interactive=not s['preview_requested'], variant="primary" if not s['preview_requested'] else "secondary"),
+            K.CREATE_PREVIEW_BUTTON: gr.update(interactive=not s['preview_requested'], 
+                                               variant="primary" if not s['preview_requested'] else "secondary"),
             K.CLEAR_QUEUE_BUTTON: gr.update(interactive=s['has_pending_tasks'], variant="stop" if s['has_pending_tasks'] else "secondary"),
-            K.ADD_TASK_BUTTON: gr.update(interactive=False, variant="secondary"), K.CLEAR_IMAGE_BUTTON: gr.update(interactive=False, variant="secondary"),
-            K.DOWNLOAD_IMAGE_BUTTON: gr.update(interactive=False, variant="secondary"), K.SAVE_QUEUE_BUTTON: gr.update(interactive=False, variant="secondary"),
+            K.ADD_TASK_BUTTON: gr.update(interactive=s['has_image'], variant="primary" if s['has_image'] else "secondary"),
+            K.CLEAR_IMAGE_BUTTON: gr.update(interactive=s['has_image'], variant="secondary"),
+            K.DOWNLOAD_IMAGE_BUTTON: gr.update(interactive=s['has_image'], variant="secondary"),
+            K.SAVE_QUEUE_BUTTON: gr.update(interactive=False, variant="secondary"),
         }},
         # Default rule for idle state.
         {'condition': lambda s: True, 'get_updates': lambda s: {
             K.ADD_TASK_BUTTON: gr.update(interactive=s['has_image'], variant="primary" if s['has_image'] else "secondary"),
-            K.PROCESS_QUEUE_BUTTON: gr.update(interactive=s['queue_has_tasks'], value="▶️ Process Queue", variant="primary"),
+            K.PROCESS_QUEUE_BUTTON: gr.update(
+                interactive=s['queue_has_tasks'],
+                value="▶️ Process Queue",
+                variant="primary"
+                ),
             K.CREATE_PREVIEW_BUTTON: gr.update(interactive=False, variant="secondary"),
             K.CLEAR_IMAGE_BUTTON: gr.update(interactive=s['has_image'], variant="secondary"),
             K.DOWNLOAD_IMAGE_BUTTON: gr.update(interactive=s['has_image'], variant="secondary"),
